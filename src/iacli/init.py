@@ -5,18 +5,16 @@ import os
 import platform
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen as _urlopen
 
-OLLAMA_URL = "http://localhost:11434"
-OLLAMA_REGISTRY_URL = "https://registry.ollama.ai"
-DEFAULT_MODEL = "qwen2.5-coder:7b"
-
 DEFAULT_CONFIG = '''[ollama]
 base_url = "http://localhost:11434"
+registry_url = "https://registry.ollama.ai"
 model = "qwen2.5-coder:7b"
 '''
 
@@ -71,19 +69,38 @@ def _pull_model(response, output_fn: Callable[[str], None]) -> None:
         raise ValueError("Ollama a interrompu le téléchargement sans le terminer.")
 
 
-def _model_manifest_url(model: str) -> str:
+def _load_config(config_path: Path, output_fn: Callable[[str], None]) -> dict[str, str]:
+    defaults: dict[str, str] = tomllib.loads(DEFAULT_CONFIG)["ollama"]
+    loaded_config = defaults.copy()
+    try:
+        with config_path.open("rb") as config_file:
+            ollama_config = tomllib.load(config_file).get("ollama", {})
+        if not isinstance(ollama_config, dict):
+            raise ValueError("La section [ollama] doit être une table TOML.")
+        for key in loaded_config:
+            value = ollama_config.get(key, loaded_config[key])
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"La valeur ollama.{key} doit être une chaîne non vide.")
+            loaded_config[key] = value.strip()
+    except (OSError, tomllib.TOMLDecodeError, ValueError) as error:
+        output_fn(f"Avertissement : configuration illisible ({error}), utilisation des valeurs par défaut.")
+        return defaults
+    return loaded_config
+
+
+def _model_manifest_url(model: str, registry_url: str) -> str:
     model_name, separator, tag = model.partition(":")
     if "/" not in model_name:
         model_name = f"library/{model_name}"
     tag = tag if separator else "latest"
     path = "/".join(quote(part, safe="") for part in model_name.split("/"))
     encoded_tag = quote(tag, safe="")
-    return f"{OLLAMA_REGISTRY_URL}/v2/{path}/manifests/{encoded_tag}"
+    return f"{registry_url.rstrip('/')}/v2/{path}/manifests/{encoded_tag}"
 
 
-def _remote_model_size(model: str, urlopen: Callable) -> int:
+def _remote_model_size(model: str, registry_url: str, urlopen: Callable) -> int:
     request = Request(
-        _model_manifest_url(model),
+        _model_manifest_url(model, registry_url),
         headers={
             "Accept": ", ".join(
                 (
@@ -155,13 +172,18 @@ def initialize(
     if not instructions_path.exists():
         instructions_path.write_text(DEFAULT_INSTRUCTIONS, encoding="utf-8")
 
-    tags_url = f"{OLLAMA_URL}/api/tags"
-    output_fn(f"Étape 3/4 : vérification de la connexion à Ollama ({OLLAMA_URL}).")
+    config = _load_config(config_path, output_fn)
+    ollama_url = config["base_url"].rstrip("/")
+    registry_url = config["registry_url"].rstrip("/")
+    default_model = config["model"]
+
+    tags_url = f"{ollama_url}/api/tags"
+    output_fn(f"Étape 3/4 : vérification de la connexion à Ollama ({ollama_url}).")
     try:
         with urlopen(Request(tags_url), timeout=5) as response:
             models = json.loads(response.read().decode("utf-8")).get("models", [])
     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
-        output_fn(f"Avertissement : Ollama n'est pas accessible sur {OLLAMA_URL} ({error}).")
+        output_fn(f"Avertissement : Ollama n'est pas accessible sur {ollama_url} ({error}).")
         output_fn("Étape 4/4 : préparation du modèle ignorée, Ollama est inaccessible.")
         output_fn(f"Configuration créée dans {target_dir}.")
         output_fn("Initialisation réussie.")
@@ -170,47 +192,47 @@ def initialize(
     output_fn("Connexion à Ollama confirmée.")
     output_fn("Étape 4/4 : vérification du modèle et de l'espace disque.")
     installed_models = {model.get("name") for model in models}
-    if DEFAULT_MODEL in installed_models:
-        output_fn(f"Le modèle {DEFAULT_MODEL} est déjà installé, aucun téléchargement nécessaire.")
+    if default_model in installed_models:
+        output_fn(f"Le modèle {default_model} est déjà installé, aucun téléchargement nécessaire.")
     else:
-        output_fn(f"Le modèle {DEFAULT_MODEL} n'est pas présent localement.")
+        output_fn(f"Le modèle {default_model} n'est pas présent localement.")
         try:
-            model_size = _remote_model_size(DEFAULT_MODEL, urlopen)
+            model_size = _remote_model_size(default_model, registry_url, urlopen)
         except HTTPError as error:
             if error.code == 404:
-                output_fn(f"Avertissement : le modèle {DEFAULT_MODEL} n'existe pas dans le registre Ollama.")
+                output_fn(f"Avertissement : le modèle {default_model} n'existe pas dans le registre Ollama.")
             else:
                 output_fn(f"Avertissement : impossible de vérifier le modèle dans le registre Ollama ({error}).")
         except (URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as error:
             output_fn(f"Avertissement : impossible de vérifier le modèle dans le registre Ollama ({error}).")
         else:
             formatted_size = _format_size(model_size)
-            output_fn(f"Modèle {DEFAULT_MODEL} trouvé dans le registre Ollama ({formatted_size}).")
+            output_fn(f"Modèle {default_model} trouvé dans le registre Ollama ({formatted_size}).")
             models_dir = Path(os.environ.get("OLLAMA_MODELS", str(Path.home() / ".ollama" / "models")))
             free_bytes = disk_free_bytes if disk_free_bytes is not None else _available_disk_bytes(models_dir)
             if free_bytes < model_size:
                 output_fn(
                     "Avertissement : espace disque insuffisant pour le modèle "
-                    f"{DEFAULT_MODEL} ({formatted_size} requis, {_format_size(free_bytes)} disponibles)."
+                    f"{default_model} ({formatted_size} requis, {_format_size(free_bytes)} disponibles)."
                 )
             else:
-                answer = input_fn(f"Télécharger le modèle {DEFAULT_MODEL} ({formatted_size}) ? [O/n] ").strip().lower()
+                answer = input_fn(f"Télécharger le modèle {default_model} ({formatted_size}) ? [O/n] ").strip().lower()
                 if answer in ("", "o", "oui", "y", "yes"):
-                    output_fn(f"Téléchargement de {DEFAULT_MODEL} lancé, progression reçue d'Ollama :")
+                    output_fn(f"Téléchargement de {default_model} lancé, progression reçue d'Ollama :")
                     pull_request = Request(
-                        f"{OLLAMA_URL}/api/pull",
-                        data=json.dumps({"name": DEFAULT_MODEL, "stream": True}).encode("utf-8"),
+                        f"{ollama_url}/api/pull",
+                        data=json.dumps({"name": default_model, "stream": True}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
                     try:
                         with urlopen(pull_request, timeout=3600) as response:
                             _pull_model(response, output_fn)
-                        output_fn(f"Modèle {DEFAULT_MODEL} téléchargé.")
+                        output_fn(f"Modèle {default_model} téléchargé.")
                     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
                         output_fn(f"Avertissement : échec du téléchargement du modèle ({error}).")
                 else:
-                    output_fn(f"Téléchargement du modèle {DEFAULT_MODEL} ignoré.")
+                    output_fn(f"Téléchargement du modèle {default_model} ignoré.")
 
     output_fn(f"Configuration créée dans {target_dir}.")
     output_fn("Initialisation réussie.")

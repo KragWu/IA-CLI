@@ -2,7 +2,7 @@ import io
 import json
 from urllib.error import HTTPError, URLError
 
-from iacli.init import OLLAMA_REGISTRY_URL, initialize
+from iacli.init import initialize
 
 
 class FakeResponse:
@@ -40,6 +40,7 @@ def test_init_creates_default_config_directory(tmp_path):
 
     assert (config_dir / "config.toml").is_file()
     assert (config_dir / "IACLI.md").is_file()
+    assert 'registry_url = "https://registry.ollama.ai"' in (config_dir / "config.toml").read_text()
     assert "Initialisation réussie" in output.getvalue()
 
 
@@ -71,7 +72,7 @@ def test_init_ollama_model_pull(tmp_path):
         requests.append(request)
         if request.full_url.endswith("/api/tags"):
             return FakeResponse(b'{"models": []}')
-        if request.full_url.startswith(OLLAMA_REGISTRY_URL):
+        if request.full_url.startswith("https://registry.ollama.ai"):
             manifest = {"config": {"size": 1024}, "layers": [{"size": 1536 * 1024**2}]}
             return FakeResponse(json.dumps(manifest).encode())
         events = [
@@ -150,6 +151,81 @@ def test_init_warns_when_default_model_does_not_exist(tmp_path):
     assert len(requests) == 2
     assert "n'existe pas dans le registre Ollama" in output.getvalue()
     assert not any(request.full_url.endswith("/api/pull") for request in requests)
+
+
+def test_init_uses_existing_config_values(tmp_path):
+    config_dir = tmp_path / "iacli"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        '[ollama]\nbase_url = "http://ollama.test:11434/"\n'
+        'registry_url = "https://registry.test/"\nmodel = "custom-coder:latest"\n',
+        encoding="utf-8",
+    )
+    output = io.StringIO()
+    requests = []
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url == "http://ollama.test:11434/api/tags":
+            return FakeResponse(b'{"models": []}')
+        if request.full_url == "https://registry.test/v2/library/custom-coder/manifests/latest":
+            manifest = {"config": {"size": 1}, "layers": [{"size": 1024}]}
+            return FakeResponse(json.dumps(manifest).encode())
+        if request.full_url == "http://ollama.test:11434/api/pull":
+            return FakeResponse(b'{"status":"success"}\n')
+        raise AssertionError(f"URL inattendue : {request.full_url}")
+
+    initialize(
+        config_dir=config_dir,
+        input_fn=lambda _prompt: "y",
+        output_fn=lambda message: print(message, file=output),
+        urlopen=urlopen,
+        which=lambda _name: "/usr/bin/tool",
+        disk_free_bytes=10 * 1024**3,
+    )
+
+    assert (config_dir / "config.toml").read_text(encoding="utf-8").count("custom-coder") == 1
+    assert "http://ollama.test:11434" in output.getvalue()
+    assert "custom-coder:latest" in output.getvalue()
+    pull_request = next(request for request in requests if request.full_url.endswith("/api/pull"))
+    assert pull_request.full_url == "http://ollama.test:11434/api/pull"
+    assert json.loads(pull_request.data) == {"name": "custom-coder:latest", "stream": True}
+    assert len(requests) == 3
+
+
+def test_init_uses_default_config_values_for_missing_keys(tmp_path):
+    config_dir = tmp_path / "iacli"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        '[ollama]\nbase_url = "http://ollama.test:11434"\n',
+        encoding="utf-8",
+    )
+    output = io.StringIO()
+    requests = []
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url == "http://ollama.test:11434/api/tags":
+            return FakeResponse(b'{"models": []}')
+        if request.full_url == (
+            "https://registry.ollama.ai/v2/library/qwen2.5-coder/manifests/7b"
+        ):
+            manifest = {"config": {"size": 1}, "layers": [{"size": 1024}]}
+            return FakeResponse(json.dumps(manifest).encode())
+        raise AssertionError(f"URL inattendue : {request.full_url}")
+
+    initialize(
+        config_dir=config_dir,
+        input_fn=lambda _prompt: "n",
+        output_fn=lambda message: print(message, file=output),
+        urlopen=urlopen,
+        which=lambda _name: "/usr/bin/tool",
+        disk_free_bytes=10 * 1024**3,
+    )
+
+    assert len(requests) == 2
+    assert "qwen2.5-coder:7b" in output.getvalue()
+    assert "Modèle qwen2.5-coder:7b trouvé" in output.getvalue()
 
 
 def test_init_warns_when_ollama_is_unreachable(tmp_path):

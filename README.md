@@ -25,10 +25,10 @@ iacli init
 
 La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée la configuration globale dans `~/.config/iacli/`, sans remplacer les fichiers déjà présents :
 
-- `config.toml` : URL Ollama et modèle par défaut (`qwen2.5-coder:7b`)
-- `IACLI.md` : instructions globales
+- `config.toml` : source des paramètres utilisés par le wizard : URL de l'instance Ollama, URL du registre des modèles et modèle par défaut (`qwen2.5-coder:7b`). Modifiez ce fichier pour cibler une autre instance ou choisir un autre modèle ; les nouvelles valeurs sont utilisées aux prochains lancements.
+- `IACLI.md` : fichier éditable pour conserver les instructions globales propres à votre usage et à vos projets. `iacli init` le crée comme point de départ et ne remplace jamais vos modifications. Le wizard actuel le prépare, mais ne l'injecte pas encore dans une conversation IA.
 
-Si le modèle est absent localement, le wizard vérifie qu'il existe dans le registre Ollama et récupère la taille de ses couches depuis son manifeste. Il compare cette taille à l'espace disponible dans l'emplacement des modèles Ollama, puis demande confirmation avant le téléchargement. Définissez `OLLAMA_MODELS` si vos modèles sont stockés dans un emplacement personnalisé. En cas de modèle introuvable, de dépendance manquante, d'espace insuffisant ou d'Ollama inaccessible, un avertissement est affiché.
+Si le modèle est absent localement, le wizard vérifie qu'il existe dans le registre configuré et récupère la taille de ses couches depuis son manifeste. Il compare cette taille à l'espace disponible dans l'emplacement des modèles Ollama, puis demande confirmation avant le téléchargement. Définissez `OLLAMA_MODELS` si vos modèles sont stockés dans un emplacement personnalisé. En cas de modèle introuvable, de dépendance manquante, d'espace insuffisant ou d'Ollama inaccessible, un avertissement est affiché.
 
 ## Tests
 
