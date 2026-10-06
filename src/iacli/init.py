@@ -2,16 +2,18 @@
 
 import json
 import os
+import platform
 import shutil
 import sys
 from pathlib import Path
 from typing import Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen as _urlopen
 
 OLLAMA_URL = "http://localhost:11434"
+OLLAMA_REGISTRY_URL = "https://registry.ollama.ai"
 DEFAULT_MODEL = "qwen2.5-coder:7b"
-MODEL_REQUIRED_BYTES = 5 * 1024**3
 
 DEFAULT_CONFIG = '''[ollama]
 base_url = "http://localhost:11434"
@@ -69,6 +71,67 @@ def _pull_model(response, output_fn: Callable[[str], None]) -> None:
         raise ValueError("Ollama a interrompu le téléchargement sans le terminer.")
 
 
+def _model_manifest_url(model: str) -> str:
+    model_name, separator, tag = model.partition(":")
+    if "/" not in model_name:
+        model_name = f"library/{model_name}"
+    tag = tag if separator else "latest"
+    path = "/".join(quote(part, safe="") for part in model_name.split("/"))
+    encoded_tag = quote(tag, safe="")
+    return f"{OLLAMA_REGISTRY_URL}/v2/{path}/manifests/{encoded_tag}"
+
+
+def _remote_model_size(model: str, urlopen: Callable) -> int:
+    request = Request(
+        _model_manifest_url(model),
+        headers={
+            "Accept": ", ".join(
+                (
+                    "application/vnd.oci.image.manifest.v1+json",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                    "application/vnd.oci.image.index.v1+json",
+                    "application/vnd.docker.distribution.manifest.list.v2+json",
+                )
+            )
+        },
+    )
+    with urlopen(request, timeout=10) as response:
+        manifest = json.loads(response.read().decode("utf-8"))
+
+    if "manifests" in manifest:
+        machine = platform.machine().lower()
+        architecture = {"amd64": "amd64", "x86_64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(
+            machine, machine
+        )
+        candidates = [
+            descriptor
+            for descriptor in manifest["manifests"]
+            if descriptor.get("platform", {}).get("architecture") == architecture
+            and descriptor.get("platform", {}).get("os") == "linux"
+        ]
+        if not candidates and len(manifest["manifests"]) == 1:
+            candidates = manifest["manifests"]
+        if not candidates:
+            raise ValueError(f"Aucun manifeste Ollama trouvé pour la plateforme {architecture}.")
+        repository_url = request.full_url.rsplit("/manifests/", 1)[0]
+        manifest_url = f"{repository_url}/manifests/{quote(candidates[0]['digest'], safe=':')}"
+        with urlopen(Request(manifest_url, headers=request.headers), timeout=10) as response:
+            manifest = json.loads(response.read().decode("utf-8"))
+
+    descriptors = [manifest.get("config", {}), *manifest.get("layers", [])]
+    size = sum(int(descriptor.get("size", 0)) for descriptor in descriptors)
+    if size <= 0:
+        raise ValueError("Le manifeste Ollama ne fournit pas de taille exploitable.")
+    return size
+
+
+def _format_size(size_bytes: int) -> str:
+    gib = size_bytes / 1024**3
+    if gib >= 1:
+        return f"{gib:.2f} Gio"
+    return f"{size_bytes / 1024**2:.0f} Mio"
+
+
 def initialize(
     config_dir: Path | None = None,
     *,
@@ -111,31 +174,43 @@ def initialize(
         output_fn(f"Le modèle {DEFAULT_MODEL} est déjà installé, aucun téléchargement nécessaire.")
     else:
         output_fn(f"Le modèle {DEFAULT_MODEL} n'est pas présent localement.")
-        models_dir = Path(os.environ.get("OLLAMA_MODELS", str(Path.home() / ".ollama" / "models")))
-        free_bytes = disk_free_bytes if disk_free_bytes is not None else _available_disk_bytes(models_dir)
-        if free_bytes < MODEL_REQUIRED_BYTES:
-            output_fn(
-                "Avertissement : espace disque insuffisant pour le modèle "
-                f"{DEFAULT_MODEL} (environ 5 Gio requis)."
-            )
-        else:
-            answer = input_fn(f"Télécharger le modèle {DEFAULT_MODEL} (environ 5 Gio) ? [O/n] ").strip().lower()
-            if answer in ("", "o", "oui", "y", "yes"):
-                output_fn(f"Téléchargement de {DEFAULT_MODEL} lancé, progression reçue d'Ollama :")
-                pull_request = Request(
-                    f"{OLLAMA_URL}/api/pull",
-                    data=json.dumps({"name": DEFAULT_MODEL, "stream": True}).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                try:
-                    with urlopen(pull_request, timeout=3600) as response:
-                        _pull_model(response, output_fn)
-                    output_fn(f"Modèle {DEFAULT_MODEL} téléchargé.")
-                except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
-                    output_fn(f"Avertissement : échec du téléchargement du modèle ({error}).")
+        try:
+            model_size = _remote_model_size(DEFAULT_MODEL, urlopen)
+        except HTTPError as error:
+            if error.code == 404:
+                output_fn(f"Avertissement : le modèle {DEFAULT_MODEL} n'existe pas dans le registre Ollama.")
             else:
-                output_fn(f"Téléchargement du modèle {DEFAULT_MODEL} ignoré.")
+                output_fn(f"Avertissement : impossible de vérifier le modèle dans le registre Ollama ({error}).")
+        except (URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as error:
+            output_fn(f"Avertissement : impossible de vérifier le modèle dans le registre Ollama ({error}).")
+        else:
+            formatted_size = _format_size(model_size)
+            output_fn(f"Modèle {DEFAULT_MODEL} trouvé dans le registre Ollama ({formatted_size}).")
+            models_dir = Path(os.environ.get("OLLAMA_MODELS", str(Path.home() / ".ollama" / "models")))
+            free_bytes = disk_free_bytes if disk_free_bytes is not None else _available_disk_bytes(models_dir)
+            if free_bytes < model_size:
+                output_fn(
+                    "Avertissement : espace disque insuffisant pour le modèle "
+                    f"{DEFAULT_MODEL} ({formatted_size} requis, {_format_size(free_bytes)} disponibles)."
+                )
+            else:
+                answer = input_fn(f"Télécharger le modèle {DEFAULT_MODEL} ({formatted_size}) ? [O/n] ").strip().lower()
+                if answer in ("", "o", "oui", "y", "yes"):
+                    output_fn(f"Téléchargement de {DEFAULT_MODEL} lancé, progression reçue d'Ollama :")
+                    pull_request = Request(
+                        f"{OLLAMA_URL}/api/pull",
+                        data=json.dumps({"name": DEFAULT_MODEL, "stream": True}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urlopen(pull_request, timeout=3600) as response:
+                            _pull_model(response, output_fn)
+                        output_fn(f"Modèle {DEFAULT_MODEL} téléchargé.")
+                    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+                        output_fn(f"Avertissement : échec du téléchargement du modèle ({error}).")
+                else:
+                    output_fn(f"Téléchargement du modèle {DEFAULT_MODEL} ignoré.")
 
     output_fn(f"Configuration créée dans {target_dir}.")
     output_fn("Initialisation réussie.")

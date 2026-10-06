@@ -28,7 +28,7 @@ La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée 
 - `config.toml` : URL Ollama et modèle par défaut (`qwen2.5-coder:7b`)
 - `IACLI.md` : instructions globales
 
-Si le modèle est absent, le wizard vérifie qu'environ 5 Gio sont disponibles dans l'emplacement des modèles Ollama, puis demande confirmation avant de le télécharger. Définissez `OLLAMA_MODELS` si vos modèles sont stockés dans un emplacement personnalisé. En cas de dépendance manquante, d'espace insuffisant ou d'Ollama inaccessible, un avertissement est affiché.
+Si le modèle est absent localement, le wizard vérifie qu'il existe dans le registre Ollama et récupère la taille de ses couches depuis son manifeste. Il compare cette taille à l'espace disponible dans l'emplacement des modèles Ollama, puis demande confirmation avant le téléchargement. Définissez `OLLAMA_MODELS` si vos modèles sont stockés dans un emplacement personnalisé. En cas de modèle introuvable, de dépendance manquante, d'espace insuffisant ou d'Ollama inaccessible, un avertissement est affiché.
 
 ## Tests
 

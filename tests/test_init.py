@@ -1,8 +1,8 @@
 import io
 import json
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
-from iacli.init import initialize
+from iacli.init import OLLAMA_REGISTRY_URL, initialize
 
 
 class FakeResponse:
@@ -71,6 +71,9 @@ def test_init_ollama_model_pull(tmp_path):
         requests.append(request)
         if request.full_url.endswith("/api/tags"):
             return FakeResponse(b'{"models": []}')
+        if request.full_url.startswith(OLLAMA_REGISTRY_URL):
+            manifest = {"config": {"size": 1024}, "layers": [{"size": 1536 * 1024**2}]}
+            return FakeResponse(json.dumps(manifest).encode())
         events = [
             {"status": "pulling manifest"},
             {"status": "downloading layer", "completed": 25 * 1024**2, "total": 100 * 1024**2},
@@ -92,6 +95,7 @@ def test_init_ollama_model_pull(tmp_path):
     assert json.loads(pull_request.data) == {"name": "qwen2.5-coder:7b", "stream": True}
     assert "Étape 1/4" in output.getvalue()
     assert "Étape 4/4" in output.getvalue()
+    assert "1.50 Gio" in output.getvalue()
     assert "25% (25.0/100.0 Mio)" in output.getvalue()
     assert "100% (100.0/100.0 Mio)" in output.getvalue()
     assert "Modèle qwen2.5-coder:7b téléchargé" in output.getvalue()
@@ -103,7 +107,9 @@ def test_init_skips_model_pull_when_disk_space_is_insufficient(tmp_path):
 
     def urlopen(request, timeout):
         requests.append(request)
-        return FakeResponse(b'{"models": []}')
+        if request.full_url.endswith("/api/tags"):
+            return FakeResponse(b'{"models": []}')
+        return FakeResponse(json.dumps({"config": {"size": 0}, "layers": [{"size": 5 * 1024**3}]}).encode())
 
     def unexpected_prompt(_prompt):
         raise AssertionError("Aucune confirmation ne doit être demandée sans espace suffisant.")
@@ -117,8 +123,33 @@ def test_init_skips_model_pull_when_disk_space_is_insufficient(tmp_path):
         disk_free_bytes=1,
     )
 
-    assert len(requests) == 1
+    assert len(requests) == 2
     assert "espace disque insuffisant" in output.getvalue()
+    assert "5.00 Gio requis" in output.getvalue()
+
+
+def test_init_warns_when_default_model_does_not_exist(tmp_path):
+    output = io.StringIO()
+    requests = []
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.endswith("/api/tags"):
+            return FakeResponse(b'{"models": []}')
+        raise HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    initialize(
+        config_dir=tmp_path / "iacli",
+        input_fn=lambda _prompt: (_ for _ in ()).throw(AssertionError("Aucun pull attendu pour un modèle absent.")),
+        output_fn=lambda message: print(message, file=output),
+        urlopen=urlopen,
+        which=lambda _name: "/usr/bin/tool",
+        disk_free_bytes=10 * 1024**3,
+    )
+
+    assert len(requests) == 2
+    assert "n'existe pas dans le registre Ollama" in output.getvalue()
+    assert not any(request.full_url.endswith("/api/pull") for request in requests)
 
 
 def test_init_warns_when_ollama_is_unreachable(tmp_path):
