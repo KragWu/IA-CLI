@@ -7,7 +7,7 @@ from iacli.init import initialize
 
 class FakeResponse:
     def __init__(self, body: bytes):
-        self.body = body
+        self.body = io.BytesIO(body)
 
     def __enter__(self):
         return self
@@ -16,7 +16,10 @@ class FakeResponse:
         return False
 
     def read(self):
-        return self.body
+        return self.body.read()
+
+    def readline(self):
+        return self.body.readline()
 
 
 def test_init_creates_default_config_directory(tmp_path):
@@ -68,7 +71,13 @@ def test_init_ollama_model_pull(tmp_path):
         requests.append(request)
         if request.full_url.endswith("/api/tags"):
             return FakeResponse(b'{"models": []}')
-        return FakeResponse(b'{"status":"success"}')
+        events = [
+            {"status": "pulling manifest"},
+            {"status": "downloading layer", "completed": 25 * 1024**2, "total": 100 * 1024**2},
+            {"status": "downloading layer", "completed": 100 * 1024**2, "total": 100 * 1024**2},
+            {"status": "success"},
+        ]
+        return FakeResponse("".join(json.dumps(event) + "\n" for event in events).encode())
 
     initialize(
         config_dir=config_dir,
@@ -80,8 +89,12 @@ def test_init_ollama_model_pull(tmp_path):
     )
 
     pull_request = next(request for request in requests if request.full_url.endswith("/api/pull"))
-    assert json.loads(pull_request.data) == {"name": "qwen2.5-coder:7b", "stream": False}
-    assert "qwen2.5-coder:7b" in output.getvalue()
+    assert json.loads(pull_request.data) == {"name": "qwen2.5-coder:7b", "stream": True}
+    assert "Étape 1/4" in output.getvalue()
+    assert "Étape 4/4" in output.getvalue()
+    assert "25% (25.0/100.0 Mio)" in output.getvalue()
+    assert "100% (100.0/100.0 Mio)" in output.getvalue()
+    assert "Modèle qwen2.5-coder:7b téléchargé" in output.getvalue()
 
 
 def test_init_skips_model_pull_when_disk_space_is_insufficient(tmp_path):

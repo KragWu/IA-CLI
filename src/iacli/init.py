@@ -42,6 +42,33 @@ def _check_prerequisites(which: Callable[[str], str | None], output_fn: Callable
             output_fn(f"Avertissement : dépendance système manquante : {label}.")
 
 
+def _pull_model(response, output_fn: Callable[[str], None]) -> None:
+    succeeded = False
+    while line := response.readline():
+        if not line.strip():
+            continue
+        event = json.loads(line.decode("utf-8"))
+        if "error" in event:
+            raise ValueError(event["error"])
+
+        status = event.get("status", "Téléchargement en cours")
+        total = event.get("total")
+        completed = event.get("completed")
+        if isinstance(total, int) and total > 0 and isinstance(completed, int):
+            percentage = min(100, completed * 100 // total)
+            completed_mib = completed / 1024**2
+            total_mib = total / 1024**2
+            output_fn(f"{status} : {percentage}% ({completed_mib:.1f}/{total_mib:.1f} Mio)")
+        else:
+            output_fn(f"Téléchargement : {status}")
+
+        if status == "success":
+            succeeded = True
+
+    if not succeeded:
+        raise ValueError("Ollama a interrompu le téléchargement sans le terminer.")
+
+
 def initialize(
     config_dir: Path | None = None,
     *,
@@ -53,8 +80,10 @@ def initialize(
 ) -> None:
     """Crée la configuration globale et propose le téléchargement du modèle."""
     target_dir = config_dir or Path.home() / ".config" / "iacli"
+    output_fn("Étape 1/4 : vérification des prérequis système.")
     _check_prerequisites(which, output_fn)
 
+    output_fn("Étape 2/4 : création de la configuration globale.")
     target_dir.mkdir(parents=True, exist_ok=True)
     config_path = target_dir / "config.toml"
     instructions_path = target_dir / "IACLI.md"
@@ -64,19 +93,24 @@ def initialize(
         instructions_path.write_text(DEFAULT_INSTRUCTIONS, encoding="utf-8")
 
     tags_url = f"{OLLAMA_URL}/api/tags"
+    output_fn(f"Étape 3/4 : vérification de la connexion à Ollama ({OLLAMA_URL}).")
     try:
         with urlopen(Request(tags_url), timeout=5) as response:
             models = json.loads(response.read().decode("utf-8")).get("models", [])
     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
         output_fn(f"Avertissement : Ollama n'est pas accessible sur {OLLAMA_URL} ({error}).")
+        output_fn("Étape 4/4 : préparation du modèle ignorée, Ollama est inaccessible.")
         output_fn(f"Configuration créée dans {target_dir}.")
         output_fn("Initialisation réussie.")
         return
 
+    output_fn("Connexion à Ollama confirmée.")
+    output_fn("Étape 4/4 : vérification du modèle et de l'espace disque.")
     installed_models = {model.get("name") for model in models}
     if DEFAULT_MODEL in installed_models:
-        output_fn(f"Le modèle {DEFAULT_MODEL} est déjà installé.")
+        output_fn(f"Le modèle {DEFAULT_MODEL} est déjà installé, aucun téléchargement nécessaire.")
     else:
+        output_fn(f"Le modèle {DEFAULT_MODEL} n'est pas présent localement.")
         models_dir = Path(os.environ.get("OLLAMA_MODELS", str(Path.home() / ".ollama" / "models")))
         free_bytes = disk_free_bytes if disk_free_bytes is not None else _available_disk_bytes(models_dir)
         if free_bytes < MODEL_REQUIRED_BYTES:
@@ -87,17 +121,16 @@ def initialize(
         else:
             answer = input_fn(f"Télécharger le modèle {DEFAULT_MODEL} (environ 5 Gio) ? [O/n] ").strip().lower()
             if answer in ("", "o", "oui", "y", "yes"):
+                output_fn(f"Téléchargement de {DEFAULT_MODEL} lancé, progression reçue d'Ollama :")
                 pull_request = Request(
                     f"{OLLAMA_URL}/api/pull",
-                    data=json.dumps({"name": DEFAULT_MODEL, "stream": False}).encode("utf-8"),
+                    data=json.dumps({"name": DEFAULT_MODEL, "stream": True}).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
                 try:
                     with urlopen(pull_request, timeout=3600) as response:
-                        result = json.loads(response.read().decode("utf-8"))
-                    if result.get("status") != "success":
-                        raise ValueError("Ollama n'a pas confirmé le téléchargement.")
+                        _pull_model(response, output_fn)
                     output_fn(f"Modèle {DEFAULT_MODEL} téléchargé.")
                 except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
                     output_fn(f"Avertissement : échec du téléchargement du modèle ({error}).")
