@@ -4,12 +4,32 @@ import argparse
 from pathlib import Path
 import sys
 
-from iacli.init import initialize
+from iacli.adapters.cli_presenter import CliPresenter
+from iacli.domain.config import OllamaSettings
+from iacli.infrastructure.configuration import FileConfigurationGateway
+from iacli.infrastructure.ollama import OllamaClient
+from iacli.infrastructure.system import LocalSystemGateway
+from iacli.services.initialize import InitializeApplication
+from iacli.services.ports import OllamaGateway
+
+
+class OllamaClientFactory:
+    def create(self, settings: OllamaSettings) -> OllamaGateway:
+        return OllamaClient(
+            base_url=settings.base_url,
+            registry_url=settings.registry_url,
+        )
 
 
 def handle_init(args: argparse.Namespace) -> None:
     """Gestionnaire de la sous-commande init."""
-    initialize(config_dir=args.config_dir)
+    use_case = InitializeApplication(
+        configuration=FileConfigurationGateway(),
+        system=LocalSystemGateway(),
+        ollama_factory=OllamaClientFactory(),
+        presenter=CliPresenter(),
+    )
+    use_case.execute(args.config_dir)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,10 +65,10 @@ def main() -> int:
         args.func(args)
         return 0
     except KeyboardInterrupt:
-        print("\n[iacli] Opération annulée par l'utilisateur.", file=sys.stderr)
+        CliPresenter().report_interruption()
         return 130
     except Exception as err:
-        print(f"[iacli] Erreur : {err}", file=sys.stderr)
+        CliPresenter().report_error(err)
         return 1
 
 

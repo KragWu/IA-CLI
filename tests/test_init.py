@@ -1,309 +1,332 @@
-import io
 import json
+import sys
 from urllib.error import HTTPError, URLError
 
-from iacli.init import initialize
-from iacli.ollama import OllamaClient
+import pytest
+
+from iacli.adapters.cli_presenter import CliPresenter
+from iacli.domain.config import OllamaSettings
+from iacli.domain.events import (
+    DownloadProgress,
+    InitializationEvent,
+    InitializationEventCode,
+)
+from iacli.infrastructure.configuration import (
+    DEFAULT_INSTRUCTIONS,
+    FileConfigurationGateway,
+)
+from iacli.infrastructure.ollama import OllamaClient
+from iacli.services.initialize import InitializeApplication
 
 
-class FakeResponse:
-    def __init__(self, body: bytes):
-        self.body = io.BytesIO(body)
+class FakeSystem:
+    def __init__(self, free_bytes: int = 10 * 1024**3, warnings=None) -> None:
+        self.free_bytes = free_bytes
+        self.warnings = warnings or []
 
-    def __enter__(self):
-        return self
+    def prerequisite_warnings(self) -> list[tuple[str, str]]:
+        return self.warnings
 
-    def __exit__(self, *_args):
-        return False
-
-    def read(self):
-        return self.body.read()
-
-    def readline(self):
-        return self.body.readline()
+    def available_model_disk_bytes(self) -> int:
+        return self.free_bytes
 
 
-def test_init_creates_default_config_directory(tmp_path):
-    config_dir = tmp_path / ".config" / "iacli"
-    output = io.StringIO()
+class FakeOllama:
+    def __init__(
+        self,
+        models: set[str] | None = None,
+        model_size: int = 1024,
+        list_error: BaseException | None = None,
+        size_error: BaseException | None = None,
+        pull_error: BaseException | None = None,
+    ) -> None:
+        self.models = models or set()
+        self.model_size = model_size
+        self.list_error = list_error
+        self.size_error = size_error
+        self.pull_error = pull_error
+        self.size_checks = []
+        self.pulls = []
 
-    def urlopen(_request, timeout):
-        return FakeResponse(json.dumps({"models": []}).encode())
+    def installed_models(self) -> set[str]:
+        if self.list_error:
+            raise self.list_error
+        return self.models
 
-    initialize(
-        config_dir=config_dir,
-        input_fn=lambda _prompt: "n",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
+    def remote_model_size(self, model: str) -> int:
+        self.size_checks.append(model)
+        if self.size_error:
+            raise self.size_error
+        return self.model_size
+
+    def pull_model(self, model: str, progress) -> None:
+        self.pulls.append(model)
+        if self.pull_error:
+            raise self.pull_error
+        progress(DownloadProgress("downloading", completed=50, total=100))
+
+
+class FakeOllamaFactory:
+    def __init__(self, client: FakeOllama) -> None:
+        self.client = client
+        self.settings = []
+
+    def create(self, settings: OllamaSettings) -> FakeOllama:
+        self.settings.append(settings)
+        return self.client
+
+
+class RecordingPresenter:
+    def __init__(self, confirm: bool = False) -> None:
+        self.confirm = confirm
+        self.events: list[InitializationEvent] = []
+        self.confirmations = []
+
+    def present(self, event: InitializationEvent) -> None:
+        self.events.append(event)
+
+    def confirm_model_download(self, model: str, size_bytes: int) -> bool:
+        self.confirmations.append((model, size_bytes))
+        return self.confirm
+
+    def codes(self) -> list[InitializationEventCode]:
+        return [event.code for event in self.events]
+
+
+def create_use_case(
+    ollama: FakeOllama,
+    *,
+    presenter: RecordingPresenter | None = None,
+    system: FakeSystem | None = None,
+) -> tuple[InitializeApplication, RecordingPresenter, FakeOllamaFactory]:
+    recording_presenter = presenter or RecordingPresenter()
+    factory = FakeOllamaFactory(ollama)
+    use_case = InitializeApplication(
+        configuration=FileConfigurationGateway(),
+        system=system or FakeSystem(),
+        ollama_factory=factory,
+        presenter=recording_presenter,
     )
-
-    assert (config_dir / "config.toml").is_file()
-    assert (config_dir / "IACLI.md").is_file()
-    assert 'registry_url = "https://registry.ollama.ai"' in (config_dir / "config.toml").read_text()
-    assert "Initialisation réussie" in output.getvalue()
+    return use_case, recording_presenter, factory
 
 
-def test_init_checks_missing_prerequisites(tmp_path):
-    output = io.StringIO()
-
-    def urlopen(_request, timeout):
-        return FakeResponse(json.dumps({"models": []}).encode())
-
-    initialize(
-        config_dir=tmp_path / "iacli",
-        input_fn=lambda _prompt: "n",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda name: None if name == "rg" else "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
-    )
-
-    assert "ripgrep" in output.getvalue()
-    assert "avertissement" in output.getvalue().lower()
-
-
-def test_init_gives_os_specific_install_hints_for_missing_prerequisites(tmp_path, monkeypatch):
-    output = io.StringIO()
-    import platform
-
-    monkeypatch.setattr(platform, "system", lambda: "Windows")
-
-    def urlopen(_request, timeout):
-        return FakeResponse(json.dumps({"models": []}).encode())
-
-    initialize(
-        config_dir=tmp_path / "iacli",
-        input_fn=lambda _prompt: "n",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: None,
-        disk_free_bytes=10 * 1024**3,
-    )
-
-    assert "winget" in output.getvalue().lower()
-    assert "git" in output.getvalue().lower()
-    assert "ripgrep" in output.getvalue().lower()
-
-
-def test_init_ollama_model_pull(tmp_path):
-    config_dir = tmp_path / "iacli"
-    output = io.StringIO()
-    requests = []
-
-    def urlopen(request, timeout):
-        requests.append(request)
-        if request.full_url.endswith("/api/tags"):
-            return FakeResponse(b'{"models": []}')
-        if request.full_url.startswith("https://registry.ollama.ai"):
-            manifest = {"config": {"size": 1024}, "layers": [{"size": 1536 * 1024**2}]}
-            return FakeResponse(json.dumps(manifest).encode())
-        events = [
-            {"status": "pulling manifest"},
-            {"status": "downloading layer", "completed": 25 * 1024**2, "total": 100 * 1024**2},
-            {"status": "downloading layer", "completed": 100 * 1024**2, "total": 100 * 1024**2},
-            {"status": "success"},
-        ]
-        return FakeResponse("".join(json.dumps(event) + "\n" for event in events).encode())
-
-    initialize(
-        config_dir=config_dir,
-        input_fn=lambda _prompt: "y",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
-    )
-
-    pull_request = next(request for request in requests if request.full_url.endswith("/api/pull"))
-    assert json.loads(pull_request.data) == {"name": "qwen2.5-coder:7b", "stream": True}
-    assert "Étape 1/4" in output.getvalue()
-    assert "Étape 4/4" in output.getvalue()
-    assert "1.50 Gio" in output.getvalue()
-    assert "25% (25.0/100.0 Mio)" in output.getvalue()
-    assert "100% (100.0/100.0 Mio)" in output.getvalue()
-    assert "Modèle qwen2.5-coder:7b téléchargé" in output.getvalue()
-
-
-def test_init_skips_model_pull_when_disk_space_is_insufficient(tmp_path):
-    output = io.StringIO()
-    requests = []
-
-    def urlopen(request, timeout):
-        requests.append(request)
-        if request.full_url.endswith("/api/tags"):
-            return FakeResponse(b'{"models": []}')
-        return FakeResponse(json.dumps({"config": {"size": 0}, "layers": [{"size": 5 * 1024**3}]}).encode())
-
-    def unexpected_prompt(_prompt):
-        raise AssertionError("Aucune confirmation ne doit être demandée sans espace suffisant.")
-
-    initialize(
-        config_dir=tmp_path / "iacli",
-        input_fn=unexpected_prompt,
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=1,
-    )
-
-    assert len(requests) == 2
-    assert "espace disque insuffisant" in output.getvalue()
-    assert "5.00 Gio requis" in output.getvalue()
-
-
-def test_init_warns_when_default_model_does_not_exist(tmp_path):
-    output = io.StringIO()
-    requests = []
-
-    def urlopen(request, timeout):
-        requests.append(request)
-        if request.full_url.endswith("/api/tags"):
-            return FakeResponse(b'{"models": []}')
-        raise HTTPError(request.full_url, 404, "Not Found", {}, None)
-
-    initialize(
-        config_dir=tmp_path / "iacli",
-        input_fn=lambda _prompt: (_ for _ in ()).throw(AssertionError("Aucun pull attendu pour un modèle absent.")),
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
-    )
-
-    assert len(requests) == 2
-    assert "n'existe pas dans le registre Ollama" in output.getvalue()
-    assert not any(request.full_url.endswith("/api/pull") for request in requests)
-
-
-def test_init_uses_existing_config_values(tmp_path):
-    config_dir = tmp_path / "iacli"
-    config_dir.mkdir()
-    (config_dir / "config.toml").write_text(
+def test_configuration_gateway_creates_files_and_preserves_user_content(tmp_path):
+    config_directory = tmp_path / "iacli"
+    config_directory.mkdir()
+    config_path = config_directory / "config.toml"
+    config_path.write_text(
         '[ollama]\nbase_url = "http://ollama.test:11434/"\n'
-        'registry_url = "https://registry.test/"\nmodel = "custom-coder:latest"\n',
+        'registry_url = "https://registry.test/"\nmodel = "custom:latest"\n',
         encoding="utf-8",
     )
-    output = io.StringIO()
-    requests = []
+    instructions_path = config_directory / "IACLI.md"
+    instructions_path.write_text("User-owned instructions", encoding="utf-8")
 
-    def urlopen(request, timeout):
-        requests.append(request)
-        if request.full_url == "http://ollama.test:11434/api/tags":
-            return FakeResponse(b'{"models": []}')
-        if request.full_url == "https://registry.test/v2/library/custom-coder/manifests/latest":
-            manifest = {"config": {"size": 1}, "layers": [{"size": 1024}]}
-            return FakeResponse(json.dumps(manifest).encode())
-        if request.full_url == "http://ollama.test:11434/api/pull":
-            return FakeResponse(b'{"status":"success"}\n')
-        raise AssertionError(f"URL inattendue : {request.full_url}")
+    state = FileConfigurationGateway().ensure_configuration(config_directory)
 
-    initialize(
-        config_dir=config_dir,
-        input_fn=lambda _prompt: "y",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
+    assert state.ollama == OllamaSettings(
+        "http://ollama.test:11434",
+        "https://registry.test",
+        "custom:latest",
     )
-
-    assert (config_dir / "config.toml").read_text(encoding="utf-8").count("custom-coder") == 1
-    assert "http://ollama.test:11434" in output.getvalue()
-    assert "custom-coder:latest" in output.getvalue()
-    pull_request = next(request for request in requests if request.full_url.endswith("/api/pull"))
-    assert pull_request.full_url == "http://ollama.test:11434/api/pull"
-    assert json.loads(pull_request.data) == {"name": "custom-coder:latest", "stream": True}
-    assert len(requests) == 3
+    assert config_path.read_text(encoding="utf-8").count("custom:latest") == 1
+    assert instructions_path.read_text(encoding="utf-8") == "User-owned instructions"
 
 
-def test_init_uses_default_config_values_for_missing_keys(tmp_path):
-    config_dir = tmp_path / "iacli"
-    config_dir.mkdir()
-    (config_dir / "config.toml").write_text(
-        '[ollama]\nbase_url = "http://ollama.test:11434"\n',
+def test_configuration_gateway_creates_default_instructions(tmp_path):
+    state = FileConfigurationGateway().ensure_configuration(tmp_path / "iacli")
+
+    assert (state.directory / "config.toml").is_file()
+    assert (state.directory / "IACLI.md").read_text(encoding="utf-8") == DEFAULT_INSTRUCTIONS
+    assert state.ollama.default_model == "qwen2.5-coder:7b"
+
+
+def test_configuration_gateway_fills_omitted_settings_with_defaults(tmp_path):
+    config_directory = tmp_path / "iacli"
+    config_directory.mkdir()
+    (config_directory / "config.toml").write_text(
+        '[ollama]\nbase_url = "http://ollama.test"\n',
         encoding="utf-8",
     )
-    output = io.StringIO()
-    requests = []
 
-    def urlopen(request, timeout):
-        requests.append(request)
-        if request.full_url == "http://ollama.test:11434/api/tags":
-            return FakeResponse(b'{"models": []}')
-        if request.full_url == (
-            "https://registry.ollama.ai/v2/library/qwen2.5-coder/manifests/7b"
-        ):
-            manifest = {"config": {"size": 1}, "layers": [{"size": 1024}]}
-            return FakeResponse(json.dumps(manifest).encode())
-        raise AssertionError(f"URL inattendue : {request.full_url}")
+    state = FileConfigurationGateway().ensure_configuration(config_directory)
 
-    initialize(
-        config_dir=config_dir,
-        input_fn=lambda _prompt: "n",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
+    assert state.ollama == OllamaSettings(
+        "http://ollama.test",
+        "https://registry.ollama.ai",
+        "qwen2.5-coder:7b",
     )
 
-    assert len(requests) == 2
-    assert "qwen2.5-coder:7b" in output.getvalue()
-    assert "Modèle qwen2.5-coder:7b trouvé" in output.getvalue()
 
-
-def test_init_warns_when_ollama_is_unreachable(tmp_path):
-    output = io.StringIO()
-
-    def urlopen(_request, timeout):
-        raise URLError("connection refused")
-
-    initialize(
-        config_dir=tmp_path / "iacli",
-        input_fn=lambda _prompt: "n",
-        output_fn=lambda message: print(message, file=output),
-        urlopen=urlopen,
-        which=lambda _name: "/usr/bin/tool",
-        disk_free_bytes=10 * 1024**3,
+def test_use_case_skips_registry_and_prompt_when_model_is_installed(tmp_path):
+    use_case, presenter, factory = create_use_case(
+        FakeOllama(models={"qwen2.5-coder:7b"}),
     )
 
-    assert "Ollama" in output.getvalue()
+    use_case.execute(tmp_path / "iacli")
+
+    assert presenter.codes().count(InitializationEventCode.MODEL_INSTALLED) == 1
+    assert presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    assert presenter.confirmations == []
+    assert factory.settings[0].default_model == "qwen2.5-coder:7b"
 
 
-def test_ollama_client_public_api():
-    client = OllamaClient(base_url="http://ollama.test:11434", registry_url="https://registry.test")
-
-    assert client.model_manifest_url("qwen2.5-coder:7b") == (
-        "https://registry.test/v2/library/qwen2.5-coder/manifests/7b"
+def test_use_case_pulls_model_after_confirmation_and_reports_progress(tmp_path):
+    ollama = FakeOllama(model_size=2048)
+    presenter = RecordingPresenter(confirm=True)
+    use_case, presenter, _ = create_use_case(
+        ollama,
+        presenter=presenter,
     )
-    assert client.list_models_url == "http://ollama.test:11434/api/tags"
-    assert client.pull_url("custom-coder:latest") == "http://ollama.test:11434/api/pull"
+
+    use_case.execute(tmp_path / "iacli")
+
+    assert ollama.size_checks == ["qwen2.5-coder:7b"]
+    assert ollama.pulls == ["qwen2.5-coder:7b"]
+    assert presenter.codes().count(InitializationEventCode.PULL_PROGRESS) == 1
+    assert presenter.codes().count(InitializationEventCode.PULL_COMPLETED) == 1
+    assert presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
 
 
-def test_ollama_client_tracks_installed_models_and_compatible_manifest_selection():
-    client = OllamaClient(base_url="http://ollama.test:11434", registry_url="https://registry.test")
+def test_use_case_does_not_prompt_or_pull_when_disk_space_is_insufficient(tmp_path):
+    ollama = FakeOllama(model_size=1024)
+    use_case, presenter, _ = create_use_case(
+        ollama,
+        system=FakeSystem(free_bytes=1),
+    )
 
-    def fake_urlopen(request, timeout):
-        if request.full_url == client.list_models_url:
-            return FakeResponse(json.dumps({"models": [{"name": "qwen2.5-coder:7b"}, {"name": "custom-coder:latest"}]}).encode())
-        if request.full_url == client.model_manifest_url("custom-coder:latest"):
-            manifest = {
+    use_case.execute(tmp_path / "iacli")
+
+    assert presenter.codes().count(InitializationEventCode.DISK_SPACE_INSUFFICIENT) == 1
+    assert presenter.confirmations == []
+    assert ollama.pulls == []
+
+
+def test_use_case_reports_unreachable_ollama_but_completes_configuration(tmp_path):
+    use_case, presenter, _ = create_use_case(
+        FakeOllama(list_error=URLError("offline")),
+    )
+
+    use_case.execute(tmp_path / "iacli")
+
+    assert presenter.codes().count(InitializationEventCode.OLLAMA_UNREACHABLE) == 1
+    assert presenter.codes().count(InitializationEventCode.CONFIGURATION_CREATED) == 1
+    assert presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+
+
+def test_use_case_warns_for_missing_model_in_registry(tmp_path):
+    use_case, presenter, _ = create_use_case(
+        FakeOllama(size_error=HTTPError("url", 404, "Not Found", {}, None)),
+    )
+
+    use_case.execute(tmp_path / "iacli")
+
+    assert presenter.codes().count(InitializationEventCode.MODEL_NOT_FOUND) == 1
+    assert presenter.confirmations == []
+
+
+def test_use_case_does_not_swallow_keyboard_interrupt_during_pull(tmp_path):
+    use_case, presenter, _ = create_use_case(
+        FakeOllama(pull_error=KeyboardInterrupt()),
+        presenter=RecordingPresenter(confirm=True),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        use_case.execute(tmp_path / "iacli")
+
+    assert InitializationEventCode.INITIALIZATION_COMPLETED not in presenter.codes()
+
+
+def test_cli_presenter_maps_events_and_confirms_without_exposing_it_to_use_case():
+    output = []
+    answers = iter(("oui",))
+    presenter = CliPresenter(input_fn=lambda _prompt: next(answers), output_fn=output.append)
+
+    presenter.present(
+        InitializationEvent(
+            InitializationEventCode.PULL_PROGRESS,
+            {"status": "downloading", "completed": 25 * 1024**2, "total": 100 * 1024**2},
+        )
+    )
+
+    assert presenter.confirm_model_download("model", 1024) is True
+    assert len(output) == 1
+
+
+def test_cli_returns_interrupt_status_when_initialization_is_cancelled(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["iacli", "init"])
+    monkeypatch.setattr(
+        "iacli.cli.handle_init",
+        lambda _args: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+
+    from iacli.cli import main
+
+    assert main() == 130
+    assert capsys.readouterr().err
+
+
+def test_ollama_public_api_uses_http_gateway_and_parses_responses(fake_urlopen):
+    client = OllamaClient(
+        base_url="http://ollama.test:11434",
+        registry_url="https://registry.test",
+        urlopen=fake_urlopen,
+    )
+    fake_urlopen.add_response(
+        client.list_models_url,
+        b'{"models":[{"name":"local:latest"}, {"name":"other:tag"}]}',
+    )
+    fake_urlopen.add_response(
+        client.model_manifest_url("remote:latest"),
+        json.dumps({"config": {"size": 1}, "layers": [{"size": 9}]}).encode(),
+    )
+    fake_urlopen.add_response(
+        client.pull_url("remote:latest"),
+        b'{"status":"pulling"}\n{"status":"success"}\n',
+    )
+    progress = []
+
+    assert client.installed_models() == {"local:latest", "other:tag"}
+    assert client.remote_model_size("remote:latest") == 10
+    client.pull_model("remote:latest", progress.append)
+
+    assert len(fake_urlopen.requests) == 3
+    assert json.loads(fake_urlopen.requests[-1][0].data) == {
+        "name": "remote:latest",
+        "stream": True,
+    }
+    assert [item.status for item in progress] == ["pulling", "success"]
+
+
+def test_registry_index_selects_the_current_platform_via_public_api(
+    fake_urlopen,
+    monkeypatch,
+):
+    monkeypatch.setattr("iacli.infrastructure.ollama.platform.system", lambda: "Windows")
+    monkeypatch.setattr("iacli.infrastructure.ollama.platform.machine", lambda: "AMD64")
+    client = OllamaClient(registry_url="https://registry.test", urlopen=fake_urlopen)
+    manifest_url = client.model_manifest_url("model:tag")
+    fake_urlopen.add_response(
+        manifest_url,
+        json.dumps(
+            {
                 "manifests": [
-                    {"digest": "sha256:linux", "platform": {"architecture": "amd64", "os": "linux"}},
-                    {"digest": "sha256:windows", "platform": {"architecture": "amd64", "os": "windows"}},
+                    {
+                        "digest": "sha256:linux",
+                        "platform": {"architecture": "amd64", "os": "linux"},
+                    },
+                    {
+                        "digest": "sha256:windows",
+                        "platform": {"architecture": "amd64", "os": "windows"},
+                    },
                 ]
             }
-            return FakeResponse(json.dumps(manifest).encode())
-        raise AssertionError(f"URL inattendue : {request.full_url}")
+        ).encode(),
+    )
+    fake_urlopen.add_response(
+        "https://registry.test/v2/library/model/manifests/sha256:windows",
+        b'{"config":{"size":1},"layers":[{"size":2}]}',
+    )
 
-    client.urlopen = fake_urlopen
-
-    assert client.installed_models() == {"qwen2.5-coder:7b", "custom-coder:latest"}
-    assert client.is_model_installed("custom-coder:latest") is True
-    assert client.is_model_installed("missing-model:latest") is False
-    assert client._select_manifest_descriptor({
-        "manifests": [
-            {"digest": "sha256:linux", "platform": {"architecture": "amd64", "os": "linux"}},
-            {"digest": "sha256:windows", "platform": {"architecture": "amd64", "os": "windows"}},
-        ]
-    })["digest"] in {"sha256:linux", "sha256:windows"}
+    assert client.remote_model_size("model:tag") == 3
+    assert fake_urlopen.requests[1][0].full_url.endswith("sha256:windows")

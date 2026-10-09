@@ -36,3 +36,15 @@ Si le modèle est absent localement, le wizard vérifie qu'il existe dans le reg
 python -m pip install pytest
 python -m pytest
 ```
+
+## Architecture
+
+Le code est organisé par responsabilités :
+
+- `domain/` contient les objets de configuration et les événements métier.
+- `services/` contient le cas d'usage d'initialisation et ses contrats (`Protocol`).
+- `infrastructure/` fournit les accès au système de fichiers, aux ressources système et à Ollama.
+- `adapters/` traduit les événements applicatifs en sortie console et porte les interactions utilisateur.
+
+Le cas d'usage dépend des contrats, ce qui permet de tester ses décisions métier avec des fakes sans exécuter
+la CLI ni dépendre des textes affichés.
