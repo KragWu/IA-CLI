@@ -2,15 +2,15 @@
 
 import json
 import os
-import platform
 import shutil
 import sys
 import tomllib
 from pathlib import Path
 from typing import Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
 from urllib.request import Request, urlopen as _urlopen
+
+from iacli.ollama import OllamaClient
 
 DEFAULT_CONFIG = '''[ollama]
 base_url = "http://localhost:11434"
@@ -42,33 +42,6 @@ def _check_prerequisites(which: Callable[[str], str | None], output_fn: Callable
             output_fn(f"Avertissement : dépendance système manquante : {label}.")
 
 
-def _pull_model(response, output_fn: Callable[[str], None]) -> None:
-    succeeded = False
-    while line := response.readline():
-        if not line.strip():
-            continue
-        event = json.loads(line.decode("utf-8"))
-        if "error" in event:
-            raise ValueError(event["error"])
-
-        status = event.get("status", "Téléchargement en cours")
-        total = event.get("total")
-        completed = event.get("completed")
-        if isinstance(total, int) and total > 0 and isinstance(completed, int):
-            percentage = min(100, completed * 100 // total)
-            completed_mib = completed / 1024**2
-            total_mib = total / 1024**2
-            output_fn(f"{status} : {percentage}% ({completed_mib:.1f}/{total_mib:.1f} Mio)")
-        else:
-            output_fn(f"Téléchargement : {status}")
-
-        if status == "success":
-            succeeded = True
-
-    if not succeeded:
-        raise ValueError("Ollama a interrompu le téléchargement sans le terminer.")
-
-
 def _load_config(config_path: Path, output_fn: Callable[[str], None]) -> dict[str, str]:
     defaults: dict[str, str] = tomllib.loads(DEFAULT_CONFIG)["ollama"]
     loaded_config = defaults.copy()
@@ -86,60 +59,6 @@ def _load_config(config_path: Path, output_fn: Callable[[str], None]) -> dict[st
         output_fn(f"Avertissement : configuration illisible ({error}), utilisation des valeurs par défaut.")
         return defaults
     return loaded_config
-
-
-def _model_manifest_url(model: str, registry_url: str) -> str:
-    model_name, separator, tag = model.partition(":")
-    if "/" not in model_name:
-        model_name = f"library/{model_name}"
-    tag = tag if separator else "latest"
-    path = "/".join(quote(part, safe="") for part in model_name.split("/"))
-    encoded_tag = quote(tag, safe="")
-    return f"{registry_url.rstrip('/')}/v2/{path}/manifests/{encoded_tag}"
-
-
-def _remote_model_size(model: str, registry_url: str, urlopen: Callable) -> int:
-    request = Request(
-        _model_manifest_url(model, registry_url),
-        headers={
-            "Accept": ", ".join(
-                (
-                    "application/vnd.oci.image.manifest.v1+json",
-                    "application/vnd.docker.distribution.manifest.v2+json",
-                    "application/vnd.oci.image.index.v1+json",
-                    "application/vnd.docker.distribution.manifest.list.v2+json",
-                )
-            )
-        },
-    )
-    with urlopen(request, timeout=10) as response:
-        manifest = json.loads(response.read().decode("utf-8"))
-
-    if "manifests" in manifest:
-        machine = platform.machine().lower()
-        architecture = {"amd64": "amd64", "x86_64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(
-            machine, machine
-        )
-        candidates = [
-            descriptor
-            for descriptor in manifest["manifests"]
-            if descriptor.get("platform", {}).get("architecture") == architecture
-            and descriptor.get("platform", {}).get("os") == "linux"
-        ]
-        if not candidates and len(manifest["manifests"]) == 1:
-            candidates = manifest["manifests"]
-        if not candidates:
-            raise ValueError(f"Aucun manifeste Ollama trouvé pour la plateforme {architecture}.")
-        repository_url = request.full_url.rsplit("/manifests/", 1)[0]
-        manifest_url = f"{repository_url}/manifests/{quote(candidates[0]['digest'], safe=':')}"
-        with urlopen(Request(manifest_url, headers=request.headers), timeout=10) as response:
-            manifest = json.loads(response.read().decode("utf-8"))
-
-    descriptors = [manifest.get("config", {}), *manifest.get("layers", [])]
-    size = sum(int(descriptor.get("size", 0)) for descriptor in descriptors)
-    if size <= 0:
-        raise ValueError("Le manifeste Ollama ne fournit pas de taille exploitable.")
-    return size
 
 
 def _format_size(size_bytes: int) -> str:
@@ -177,11 +96,10 @@ def initialize(
     registry_url = config["registry_url"].rstrip("/")
     default_model = config["model"]
 
-    tags_url = f"{ollama_url}/api/tags"
+    client = OllamaClient(base_url=ollama_url, registry_url=registry_url, urlopen=urlopen)
     output_fn(f"Étape 3/4 : vérification de la connexion à Ollama ({ollama_url}).")
     try:
-        with urlopen(Request(tags_url), timeout=5) as response:
-            models = json.loads(response.read().decode("utf-8")).get("models", [])
+        models = client.list_models()
     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
         output_fn(f"Avertissement : Ollama n'est pas accessible sur {ollama_url} ({error}).")
         output_fn("Étape 4/4 : préparation du modèle ignorée, Ollama est inaccessible.")
@@ -197,7 +115,7 @@ def initialize(
     else:
         output_fn(f"Le modèle {default_model} n'est pas présent localement.")
         try:
-            model_size = _remote_model_size(default_model, registry_url, urlopen)
+            model_size = client.remote_model_size(default_model)
         except HTTPError as error:
             if error.code == 404:
                 output_fn(f"Avertissement : le modèle {default_model} n'existe pas dans le registre Ollama.")
@@ -219,18 +137,11 @@ def initialize(
                 answer = input_fn(f"Télécharger le modèle {default_model} ({formatted_size}) ? [O/n] ").strip().lower()
                 if answer in ("", "o", "oui", "y", "yes"):
                     output_fn(f"Téléchargement de {default_model} lancé, progression reçue d'Ollama :")
-                    pull_request = Request(
-                        f"{ollama_url}/api/pull",
-                        data=json.dumps({"name": default_model, "stream": True}).encode("utf-8"),
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
-                    )
                     try:
-                        with urlopen(pull_request, timeout=3600) as response:
-                            _pull_model(response, output_fn)
+                        client.pull_model(default_model, output_fn)
                         output_fn(f"Modèle {default_model} téléchargé.")
-                    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
-                        output_fn(f"Avertissement : échec du téléchargement du modèle ({error}).")
+                    except (HTTPError, URLError, TimeoutError, OSError, ValueError, KeyboardInterrupt) as error:
+                        output_fn(f"Avertissement : échec ou interruption du téléchargement ({error}).")
                 else:
                     output_fn(f"Téléchargement du modèle {default_model} ignoré.")
 

@@ -3,6 +3,7 @@ import json
 from urllib.error import HTTPError, URLError
 
 from iacli.init import initialize
+from iacli.ollama import OllamaClient
 
 
 class FakeResponse:
@@ -244,3 +245,42 @@ def test_init_warns_when_ollama_is_unreachable(tmp_path):
     )
 
     assert "Ollama" in output.getvalue()
+
+
+def test_ollama_client_public_api():
+    client = OllamaClient(base_url="http://ollama.test:11434", registry_url="https://registry.test")
+
+    assert client.model_manifest_url("qwen2.5-coder:7b") == (
+        "https://registry.test/v2/library/qwen2.5-coder/manifests/7b"
+    )
+    assert client.list_models_url == "http://ollama.test:11434/api/tags"
+    assert client.pull_url("custom-coder:latest") == "http://ollama.test:11434/api/pull"
+
+
+def test_ollama_client_tracks_installed_models_and_compatible_manifest_selection():
+    client = OllamaClient(base_url="http://ollama.test:11434", registry_url="https://registry.test")
+
+    def fake_urlopen(request, timeout):
+        if request.full_url == client.list_models_url:
+            return FakeResponse(json.dumps({"models": [{"name": "qwen2.5-coder:7b"}, {"name": "custom-coder:latest"}]}).encode())
+        if request.full_url == client.model_manifest_url("custom-coder:latest"):
+            manifest = {
+                "manifests": [
+                    {"digest": "sha256:linux", "platform": {"architecture": "amd64", "os": "linux"}},
+                    {"digest": "sha256:windows", "platform": {"architecture": "amd64", "os": "windows"}},
+                ]
+            }
+            return FakeResponse(json.dumps(manifest).encode())
+        raise AssertionError(f"URL inattendue : {request.full_url}")
+
+    client.urlopen = fake_urlopen
+
+    assert client.installed_models() == {"qwen2.5-coder:7b", "custom-coder:latest"}
+    assert client.is_model_installed("custom-coder:latest") is True
+    assert client.is_model_installed("missing-model:latest") is False
+    assert client._select_manifest_descriptor({
+        "manifests": [
+            {"digest": "sha256:linux", "platform": {"architecture": "amd64", "os": "linux"}},
+            {"digest": "sha256:windows", "platform": {"architecture": "amd64", "os": "windows"}},
+        ]
+    })["digest"] in {"sha256:linux", "sha256:windows"}
