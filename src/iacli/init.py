@@ -1,7 +1,7 @@
 """Initialisation de la configuration globale IA-CLI."""
 
-import json
 import os
+import platform
 import shutil
 import sys
 import tomllib
@@ -33,20 +33,46 @@ def _available_disk_bytes(models_dir: Path) -> int:
     return shutil.disk_usage(path).free
 
 
+def _platform_install_hint(executable: str) -> str:
+    """Retourne une commande d'installation adaptée au système d'exploitation courant."""
+    system_name = platform.system().lower()
+    if "windows" in system_name:
+        hints = {
+            "git": "Installer Git via 'winget install --id Git.Git -e' ou depuis git-scm.com.",
+            "rg": "Installer ripgrep via 'winget install --id BurntSushi.ripgrep.MSBuild -e'.",
+        }
+    elif "darwin" in system_name or "mac" in system_name:
+        hints = {
+            "git": "Installer Git avec 'brew install git'.",
+            "rg": "Installer ripgrep avec 'brew install ripgrep'.",
+        }
+    else:
+        hints = {
+            "git": "Installer Git avec 'sudo apt install git' (Debian/Ubuntu), 'sudo dnf install git' (Fedora) ou 'sudo apk add git' (Alpine).",
+            "rg": "Installer ripgrep avec 'sudo apt install ripgrep' (Debian/Ubuntu), 'sudo dnf install ripgrep' (Fedora) ou 'sudo apk add ripgrep' (Alpine).",
+        }
+    return hints.get(executable, f"Installez '{executable}' pour votre système d'exploitation.")
+
+
 def _check_prerequisites(which: Callable[[str], str | None], output_fn: Callable[[str], None]) -> None:
+    """Vérifie les dépendances minimales et donne une aide install rapide si besoin."""
     if sys.version_info < (3, 11):
         output_fn("Avertissement : Python 3.11 ou supérieur est requis.")
 
     for executable, label in (("git", "git"), ("rg", "ripgrep")):
         if which(executable) is None:
             output_fn(f"Avertissement : dépendance système manquante : {label}.")
+            output_fn(f"Conseil : {_platform_install_hint(executable)}")
 
 
 def _load_config(config_path: Path, output_fn: Callable[[str], None]) -> dict[str, str]:
+    """Fusionne les valeurs par défaut avec les éventuelles overrides du fichier de config."""
     defaults: dict[str, str] = tomllib.loads(DEFAULT_CONFIG)["ollama"]
     loaded_config = defaults.copy()
     try:
         with config_path.open("rb") as config_file:
+            # The global config file is the user's override layer; we keep the defaults
+            # as the safety net when a value is missing or invalid.
             ollama_config = tomllib.load(config_file).get("ollama", {})
         if not isinstance(ollama_config, dict):
             raise ValueError("La section [ollama] doit être une table TOML.")
@@ -78,6 +104,8 @@ def initialize(
     disk_free_bytes: int | None = None,
 ) -> None:
     """Crée la configuration globale et propose le téléchargement du modèle."""
+    # Use the standard config directory for the user, while keeping the code testable by
+    # allowing a temporary folder to be injected via the `config_dir` parameter.
     target_dir = config_dir or Path.home() / ".config" / "iacli"
     output_fn("Étape 1/4 : vérification des prérequis système.")
     _check_prerequisites(which, output_fn)
@@ -109,6 +137,7 @@ def initialize(
 
     output_fn("Connexion à Ollama confirmée.")
     output_fn("Étape 4/4 : vérification du modèle et de l'espace disque.")
+    # The model list returned by Ollama is the source of truth for local availability.
     installed_models = {model.get("name") for model in models}
     if default_model in installed_models:
         output_fn(f"Le modèle {default_model} est déjà installé, aucun téléchargement nécessaire.")

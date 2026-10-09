@@ -8,8 +8,10 @@ from urllib.request import Request, urlopen as _urlopen
 
 
 def _model_manifest_url(model: str, registry_url: str) -> str:
+    """Construit l'URL du manifeste Docker/OCI pour un modèle donné."""
     model_name, separator, tag = model.partition(":")
     if "/" not in model_name:
+        # Ollama registry uses a `library/` namespace for short names like `llama3`.
         model_name = f"library/{model_name}"
     tag = tag if separator else "latest"
     path = "/".join(quote(part, safe="") for part in model_name.split("/"))
@@ -49,6 +51,7 @@ def _remote_model_size(model: str, registry_url: str, urlopen: Callable = _urlop
 
 
 def _pull_model(response, output_fn: Callable[[str], None]) -> None:
+    """Lit le flux SSE d'Ollama et affiche la progression du téléchargement."""
     succeeded = False
     while line := response.readline():
         if not line.strip():
@@ -90,6 +93,7 @@ class OllamaClient:
 
     @staticmethod
     def _platform_os_and_architecture() -> tuple[str, str]:
+        """Normalise le système et l'architecture pour choisir le bon manifest registry."""
         machine = platform.machine().lower()
         architecture = {"amd64": "amd64", "x86_64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(
             machine, machine
@@ -132,17 +136,21 @@ class OllamaClient:
         return f"{self.base_url}/api/pull"
 
     def list_models(self) -> list[dict]:
+        """Retourne la liste des modèles installés côté Ollama."""
         with self.urlopen(Request(self.list_models_url), timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
         return payload.get("models", [])
 
     def installed_models(self) -> set[str]:
+        """Extrait les noms de modèles installés sous forme de set pour un test rapide."""
         return {model.get("name") for model in self.list_models() if isinstance(model, dict) and model.get("name")}
 
     def is_model_installed(self, model: str) -> bool:
+        """Vérifie si un modèle donné est déjà présent localement."""
         return model in self.installed_models()
 
     def pull_model(self, model: str, output_fn: Callable[[str], None]) -> None:
+        """Télécharge un modèle en flux, tout en relayant la progression à l'utilisateur."""
         request = Request(
             self.pull_url(model),
             data=json.dumps({"name": model, "stream": True}).encode("utf-8"),

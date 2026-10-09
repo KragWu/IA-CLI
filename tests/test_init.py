@@ -64,6 +64,29 @@ def test_init_checks_missing_prerequisites(tmp_path):
     assert "avertissement" in output.getvalue().lower()
 
 
+def test_init_gives_os_specific_install_hints_for_missing_prerequisites(tmp_path, monkeypatch):
+    output = io.StringIO()
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+
+    def urlopen(_request, timeout):
+        return FakeResponse(json.dumps({"models": []}).encode())
+
+    initialize(
+        config_dir=tmp_path / "iacli",
+        input_fn=lambda _prompt: "n",
+        output_fn=lambda message: print(message, file=output),
+        urlopen=urlopen,
+        which=lambda _name: None,
+        disk_free_bytes=10 * 1024**3,
+    )
+
+    assert "winget" in output.getvalue().lower()
+    assert "git" in output.getvalue().lower()
+    assert "ripgrep" in output.getvalue().lower()
+
+
 def test_init_ollama_model_pull(tmp_path):
     config_dir = tmp_path / "iacli"
     output = io.StringIO()
