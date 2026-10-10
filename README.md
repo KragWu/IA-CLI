@@ -23,10 +23,25 @@ Puis lancez le wizard :
 iacli init
 ```
 
+Une fois le modèle configuré et téléchargé, lancez une conversation depuis le dossier
+du projet :
+
+```bash
+iacli
+# ou explicitement
+iacli chat
+```
+
+L'agent peut lire, lister et rechercher les fichiers du projet courant. Il peut aussi
+proposer des modifications ou des commandes shell, mais affiche le diff ou la commande
+et demande votre confirmation avant chaque action. Les chemins de fichiers sont limités
+au projet courant. Utilisez `/exit` ou `/quit` pour fermer la conversation. `iacli init`
+reste disponible pour créer la configuration et télécharger le modèle configuré.
+
 La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée la configuration globale dans `~/.config/iacli/`, sans remplacer les fichiers déjà présents :
 
 - `config.toml` : source des paramètres utilisés par le wizard : URL de l'instance Ollama, URL du registre des modèles et modèle par défaut (`qwen2.5-coder:7b`). Modifiez ce fichier pour cibler une autre instance ou choisir un autre modèle ; les nouvelles valeurs sont utilisées aux prochains lancements.
-- `IACLI.md` : fichier éditable pour conserver les instructions globales propres à votre usage et à vos projets. `iacli init` le crée comme point de départ et ne remplace jamais vos modifications. Le wizard actuel le prépare, mais ne l'injecte pas encore dans une conversation IA.
+- `IACLI.md` : fichier éditable pour conserver les instructions globales propres à votre usage et à vos projets. `iacli init` le crée comme point de départ et ne remplace jamais vos modifications. Ces instructions sont ajoutées au contexte lors du lancement d'une conversation.
 
 Si le modèle est absent localement, le wizard vérifie qu'il existe dans le registre configuré et récupère la taille de ses couches depuis son manifeste. Il compare cette taille à l'espace disponible dans l'emplacement des modèles Ollama, puis demande confirmation avant le téléchargement. Définissez `OLLAMA_MODELS` si vos modèles sont stockés dans un emplacement personnalisé. En cas de modèle introuvable, de dépendance manquante, d'espace insuffisant ou d'Ollama inaccessible, un avertissement est affiché.
 
@@ -42,8 +57,8 @@ python -m pytest
 Le code est organisé par responsabilités :
 
 - `domain/` contient les objets de configuration et les événements métier.
-- `services/` contient le cas d'usage d'initialisation et ses contrats (`Protocol`).
-- `infrastructure/` fournit les accès au système de fichiers, aux ressources système et à Ollama.
+- `services/` contient les cas d'usage d'initialisation et de conversation ainsi que leurs contrats (`Protocol`).
+- `infrastructure/` fournit les accès au système de fichiers, aux ressources système, à Ollama et aux outils du projet.
 - `adapters/` traduit les événements applicatifs en sortie console et porte les interactions utilisateur.
 
 Le cas d'usage dépend des contrats, ce qui permet de tester ses décisions métier avec des fakes sans exécuter
