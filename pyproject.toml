@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "CLI locale pour travailler avec des IA open source"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["langgraph>=0.2", "langchain-ollama>=0.2"]
 
 [project.scripts]
 iacli = "iacli.cli:main"
