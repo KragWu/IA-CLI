@@ -48,3 +48,11 @@ Le code est organisé par responsabilités :
 
 Le cas d'usage dépend des contrats, ce qui permet de tester ses décisions métier avec des fakes sans exécuter
 la CLI ni dépendre des textes affichés.
+
+## Graphe agent/outils
+
+`iacli.services.agent_graph.build_control_graph` construit un graphe LangGraph dont le modèle compatible
+`bind_tools` et l'évaluateur sont injectés par l'appelant. L'agent route les demandes d'outils vers leur
+exécution, puis réinjecte les `ToolMessage` au modèle. Une réponse sans outil passe par l'évaluateur avant
+la fin du graphe. La limite par défaut est de 25 exécutions d'outils et peut être ajustée avec
+`max_iterations`.
