@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.infrastructure.workspace_tools import create_workspace_tools
@@ -65,10 +65,32 @@ def run_chat(
             return
         if not user_input:
             continue
-        result = graph.invoke(
-            {"messages": [*messages, HumanMessage(content=user_input)]},
-            config={"max_concurrency": 1},
-        )
+        chat_presenter.start_progress()
+        result = None
+        try:
+            for state in graph.stream(
+                {"messages": [*messages, HumanMessage(content=user_input)]},
+                config={"max_concurrency": 1},
+                stream_mode="values",
+            ):
+                result = state
+                latest_message = state["messages"][-1]
+                if isinstance(latest_message, AIMessage) and latest_message.tool_calls:
+                    tool_names = ", ".join(
+                        tool_call["name"] for tool_call in latest_message.tool_calls
+                    )
+                    chat_presenter.update_progress(f"Appel des outils : {tool_names}")
+                elif isinstance(latest_message, ToolMessage):
+                    chat_presenter.update_progress(
+                        f"Résultat de {latest_message.name} reçu; l'agent poursuit"
+                    )
+                elif isinstance(latest_message, AIMessage):
+                    chat_presenter.update_progress("Préparation de la réponse")
+        finally:
+            chat_presenter.stop_progress()
+
+        if result is None:
+            raise RuntimeError("Le graphe agent n'a produit aucun état.")
         messages = result["messages"]
         response = messages[-1].content
         if not isinstance(response, str):

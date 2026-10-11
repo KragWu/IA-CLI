@@ -37,6 +37,9 @@ proposer des modifications ou des commandes shell, mais affiche le diff ou la co
 et demande votre confirmation avant chaque action. Les chemins de fichiers sont limités
 au projet courant. Utilisez `/exit` ou `/quit` pour fermer la conversation. `iacli init`
 reste disponible pour créer la configuration et télécharger le modèle configuré.
+Pendant le traitement, la CLI affiche un indicateur animé dans un terminal interactif,
+ainsi que le nom des outils appelés et la réception de leurs résultats. Cet affichage
+montre l'avancement sans révéler le raisonnement interne détaillé du modèle.
 
 La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée la configuration globale dans `~/.config/iacli/`, sans remplacer les fichiers déjà présents :
 

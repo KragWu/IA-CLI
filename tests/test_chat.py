@@ -1,7 +1,7 @@
 from argparse import Namespace
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
@@ -117,6 +117,60 @@ def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
     assert model.calls[1][-1].content == "deuxième demande"
     assert any("Réponse 1" in line for line in output)
     assert any("Réponse 2" in line for line in output)
+
+
+def test_chat_reports_tool_progress(tmp_path):
+    (tmp_path / "notes.txt").write_text("contenu du projet", encoding="utf-8")
+
+    class ToolCallingModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "read_file",
+                            "args": {"path": "notes.txt"},
+                            "id": "read-notes",
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+            assert isinstance(messages[-1], ToolMessage)
+            return AIMessage(content="Le fichier contient le contenu du projet.")
+
+    class RecordingPresenter(CliChatPresenter):
+        def __init__(self):
+            super().__init__(
+                input_fn=lambda _prompt: "",
+                output_fn=lambda _line: None,
+            )
+            self.progress_updates = []
+
+        def prompt(self):
+            return next(self.prompts)
+
+        def start(self, workspace, model):
+            self.prompts = iter(("Lis notes.txt", "/exit"))
+
+        def start_progress(self):
+            self.progress_updates.append("started")
+
+        def update_progress(self, message):
+            self.progress_updates.append(message)
+
+        def stop_progress(self):
+            self.progress_updates.append("stopped")
+
+    model = ToolCallingModel()
+    presenter = RecordingPresenter()
+    run_chat(model, tmp_path, "", "fake-model", presenter=presenter)
+
+    assert "Appel des outils : read_file" in presenter.progress_updates
+    assert any("Résultat de read_file reçu" in item for item in presenter.progress_updates)
+    assert presenter.progress_updates[0] == "started"
+    assert presenter.progress_updates[-1] == "stopped"
 
 
 def test_chat_exits_cleanly_on_end_of_input(tmp_path):
