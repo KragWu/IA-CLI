@@ -49,7 +49,24 @@ def create_workspace_tools(
         """Lire le contenu d'un fichier du projet."""
         file_path = resolve_path(path)
         if not file_path.is_file():
-            raise FileNotFoundError(f"Fichier introuvable : {path}")
+            candidates = [
+                candidate
+                for candidate in iter_files(root)
+                if candidate.name.casefold() == Path(path).name.casefold()
+            ]
+            if len(candidates) == 1:
+                file_path = candidates[0]
+            elif len(candidates) > 1:
+                choices = ", ".join(
+                    candidate.relative_to(root).as_posix()
+                    for candidate in candidates[:10]
+                )
+                raise ValueError(
+                    f"Le nom '{Path(path).name}' est ambigu. "
+                    f"Précisez un chemin relatif au projet : {choices}"
+                )
+            else:
+                raise FileNotFoundError(f"Fichier introuvable : {path}")
         if file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour lecture : {path}")
         content = file_path.read_text(encoding="utf-8")

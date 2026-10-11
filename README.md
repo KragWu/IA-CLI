@@ -40,6 +40,13 @@ reste disponible pour créer la configuration et télécharger le modèle config
 Pendant le traitement, la CLI affiche un indicateur animé dans un terminal interactif,
 ainsi que le nom des outils appelés et la réception de leurs résultats. Cet affichage
 montre l'avancement sans révéler le raisonnement interne détaillé du modèle.
+Si le modèle Ollama renvoie exceptionnellement un appel d'outil en JSON dans son texte
+plutôt que dans les métadonnées de tool calling, IA-CLI reconnaît le format
+`{"name":"outil","arguments":{...}}` (y compris plusieurs objets JSON séparés par des
+sauts de ligne) pour les outils connus et les transmet au graphe comme de véritables
+appels d'outils. Si un fichier est désigné par son nom seul, sa lecture est résolue
+quand ce nom ne correspond qu'à un seul fichier du projet; les noms ambigus demandent
+un chemin plus précis.
 
 La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée la configuration globale dans `~/.config/iacli/`, sans remplacer les fichiers déjà présents :
 

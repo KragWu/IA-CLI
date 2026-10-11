@@ -127,17 +127,10 @@ def test_chat_reports_tool_progress(tmp_path):
             self.calls.append(messages)
             if len(self.calls) == 1:
                 return AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "name": "read_file",
-                            "args": {"path": "notes.txt"},
-                            "id": "read-notes",
-                            "type": "tool_call",
-                        }
-                    ],
+                    content='{"name":"read_file","arguments":{"path":"notes.txt"}}'
                 )
             assert isinstance(messages[-1], ToolMessage)
+            assert messages[-1].content == "contenu du projet"
             return AIMessage(content="Le fichier contient le contenu du projet.")
 
     class RecordingPresenter(CliChatPresenter):
@@ -147,6 +140,7 @@ def test_chat_reports_tool_progress(tmp_path):
                 output_fn=lambda _line: None,
             )
             self.progress_updates = []
+            self.tool_events = []
 
         def prompt(self):
             return next(self.prompts)
@@ -163,6 +157,12 @@ def test_chat_reports_tool_progress(tmp_path):
         def stop_progress(self):
             self.progress_updates.append("stopped")
 
+        def show_tool_call(self, name, arguments):
+            self.tool_events.append(("call", name, arguments))
+
+        def show_tool_result(self, name):
+            self.tool_events.append(("result", name))
+
     model = ToolCallingModel()
     presenter = RecordingPresenter()
     run_chat(model, tmp_path, "", "fake-model", presenter=presenter)
@@ -171,6 +171,54 @@ def test_chat_reports_tool_progress(tmp_path):
     assert any("Résultat de read_file reçu" in item for item in presenter.progress_updates)
     assert presenter.progress_updates[0] == "started"
     assert presenter.progress_updates[-1] == "stopped"
+    assert presenter.tool_events == [
+        ("call", "read_file", {"path": "notes.txt"}),
+        ("result", "read_file"),
+    ]
+
+
+def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
+    (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
+    source_file = tmp_path / "src" / "iacli"
+    source_file.mkdir(parents=True)
+    (source_file / "cli.py").write_text("cli contents", encoding="utf-8")
+
+    class MultiToolCallingModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(
+                    content=(
+                        '{"name":"read_file","arguments":{"path":"README.md"}}\n'
+                        '{"name":"read_file","arguments":{"path":"cli.py"}}'
+                    )
+                )
+            tool_messages = [
+                message for message in messages if isinstance(message, ToolMessage)
+            ]
+            assert [message.content for message in tool_messages] == [
+                "readme contents",
+                "cli contents",
+            ]
+            return AIMessage(content="Voici les premières lignes des deux fichiers.")
+
+    model = MultiToolCallingModel()
+    prompts = iter(
+        (
+            "Montre les premières lignes du README.md puis cli.py.",
+            "/exit",
+        )
+    )
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(model, tmp_path, "", "fake-model", presenter=presenter)
+
+    assert len(model.calls) == 2
+    assert any("Voici les premières lignes des deux fichiers." in line for line in output)
 
 
 def test_chat_exits_cleanly_on_end_of_input(tmp_path):

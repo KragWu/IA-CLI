@@ -1,9 +1,11 @@
 """LangGraph orchestration for an injectable tool-calling agent."""
 
+import json
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, TypedDict
+from uuid import uuid4
 
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -37,9 +39,61 @@ def build_control_graph(
 
     agent_model = model.bind_tools(tools)
     action_node = ToolNode(tools)
+    tool_names = {tool.name for tool in tools}
+
+    def normalize_text_tool_call(response: Any) -> Any:
+        if not isinstance(response, AIMessage) or response.tool_calls:
+            return response
+        if not isinstance(response.content, str):
+            return response
+        decoder = json.JSONDecoder()
+        content = response.content
+        position = 0
+        payloads = []
+        while position < len(content):
+            while position < len(content) and content[position].isspace():
+                position += 1
+            if position == len(content):
+                break
+            try:
+                payload, position = decoder.raw_decode(content, position)
+            except json.JSONDecodeError:
+                return response
+            if not isinstance(payload, dict):
+                return response
+            payloads.append(payload)
+
+        if not payloads:
+            return response
+
+        calls = []
+        for payload in payloads:
+            name = payload.get("name")
+            arguments = payload.get("arguments")
+            if (
+                not isinstance(name, str)
+                or name not in tool_names
+                or not isinstance(arguments, dict)
+            ):
+                return response
+            calls.append(
+                {
+                    "name": name,
+                    "args": arguments,
+                    "id": str(uuid4()),
+                    "type": "tool_call",
+                }
+            )
+
+        return AIMessage(
+            content="",
+            tool_calls=calls,
+            id=response.id,
+            response_metadata=response.response_metadata,
+        )
 
     def agent(state: AgentState) -> dict[str, Any]:
-        response = agent_model.invoke(state["messages"])
+        response = normalize_text_tool_call(agent_model.invoke(state["messages"]))
         updates: dict[str, Any] = {
             "messages": [response],
             "tool_iterations": state.get("tool_iterations", 0),
