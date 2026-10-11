@@ -34,6 +34,26 @@ def test_workspace_tools_reject_paths_outside_project(tmp_path):
         tools["read_file"].invoke({"path": "../outside.txt"})
 
 
+def test_read_file_resolves_unique_filename_in_project(tmp_path):
+    source = tmp_path / "src" / "iacli"
+    source.mkdir(parents=True)
+    (source / "cli.py").write_text("cli source", encoding="utf-8")
+    tools = create_tools(tmp_path)
+
+    assert tools["read_file"].invoke({"path": "cli.py"}) == "cli source"
+
+
+def test_read_file_rejects_ambiguous_filename_in_project(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "cli.py").write_text("source", encoding="utf-8")
+    (tmp_path / "tests" / "cli.py").write_text("test", encoding="utf-8")
+    tools = create_tools(tmp_path)
+
+    with pytest.raises(ValueError, match="est ambigu"):
+        tools["read_file"].invoke({"path": "cli.py"})
+
+
 def test_write_file_requires_confirmation_and_shows_diff(tmp_path):
     previews = []
     tools = create_tools(

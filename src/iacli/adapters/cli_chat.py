@@ -1,6 +1,7 @@
 """Interactive console adapter for the agent graph."""
 
 from collections.abc import Callable
+import json
 from pathlib import Path
 import sys
 from threading import Event, Lock, Thread
@@ -31,6 +32,13 @@ class CliChatPresenter:
 
     def show_response(self, response: str) -> None:
         self._output(f"\niacli> {response}\n")
+
+    def show_tool_call(self, name: str, arguments: dict[str, object]) -> None:
+        serialized_arguments = json.dumps(arguments, ensure_ascii=False)
+        self._output(f"outil> {name}({serialized_arguments})")
+
+    def show_tool_result(self, name: str) -> None:
+        self._output(f"outil terminé> {name}")
 
     def start_progress(self) -> None:
         self._progress_message = "L'agent traite votre demande"

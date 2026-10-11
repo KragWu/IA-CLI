@@ -50,7 +50,9 @@ def run_chat(
                 "Tu es un assistant de programmation local. Réponds en français par défaut. "
                 "Le répertoire de travail est le projet courant. Utilise les outils pour "
                 "lire et rechercher dans le projet; toute modification de fichier et toute "
-                "commande shell nécessitent une confirmation explicite de l'utilisateur.\n\n"
+                "commande shell nécessitent une confirmation explicite de l'utilisateur. "
+                "Quand tu dois utiliser un outil, appelle-le via l'interface d'outils; "
+                "ne renvoie pas un appel d'outil sous forme de JSON dans ta réponse.\n\n"
                 f"Instructions globales :\n{instructions}"
             )
         )
@@ -80,10 +82,16 @@ def run_chat(
                         tool_call["name"] for tool_call in latest_message.tool_calls
                     )
                     chat_presenter.update_progress(f"Appel des outils : {tool_names}")
+                    for tool_call in latest_message.tool_calls:
+                        chat_presenter.show_tool_call(
+                            tool_call["name"],
+                            tool_call["args"],
+                        )
                 elif isinstance(latest_message, ToolMessage):
                     chat_presenter.update_progress(
                         f"Résultat de {latest_message.name} reçu; l'agent poursuit"
                     )
+                    chat_presenter.show_tool_result(latest_message.name)
                 elif isinstance(latest_message, AIMessage):
                     chat_presenter.update_progress("Préparation de la réponse")
         finally:
