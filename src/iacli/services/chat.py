@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from time import perf_counter
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -36,12 +37,16 @@ def run_chat(
         workspace,
         chat_presenter.confirm_file_write,
         chat_presenter.confirm_shell_command,
+        chat_presenter.show_action_timing,
     )
     graph = build_control_graph(
         model,
         tools,
         evaluate_response,
         max_iterations=MAX_TOOL_ITERATIONS,
+        on_agent_timing=lambda elapsed: chat_presenter.show_action_timing(
+            "modèle", elapsed
+        ),
     )
     chat_presenter.start(workspace, model_name)
     messages = [
@@ -68,6 +73,7 @@ def run_chat(
         if not user_input:
             continue
         chat_presenter.start_progress()
+        request_started = perf_counter()
         result = None
         try:
             for state in graph.stream(
@@ -96,6 +102,7 @@ def run_chat(
                     chat_presenter.update_progress("Préparation de la réponse")
         finally:
             chat_presenter.stop_progress()
+            chat_presenter.show_total_duration(perf_counter() - request_started)
 
         if result is None:
             raise RuntimeError("Le graphe agent n'a produit aucun état.")

@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, TypedDict
 from uuid import uuid4
+from time import perf_counter
 
 from langchain_core.messages import AIMessage, AnyMessage
 from langchain_core.tools import BaseTool
@@ -20,6 +21,7 @@ class AgentState(TypedDict, total=False):
 
 
 Evaluator = Callable[[AgentState], object]
+AgentTimingCallback = Callable[[float], None]
 
 
 class MaxToolIterationsError(RuntimeError):
@@ -32,6 +34,7 @@ def build_control_graph(
     evaluator: Evaluator,
     *,
     max_iterations: int = 25,
+    on_agent_timing: AgentTimingCallback | None = None,
 ):
     """Build a graph that alternates between an agent and its tools."""
     if max_iterations < 1:
@@ -93,7 +96,14 @@ def build_control_graph(
         )
 
     def agent(state: AgentState) -> dict[str, Any]:
-        response = normalize_text_tool_call(agent_model.invoke(state["messages"]))
+        started = perf_counter()
+        try:
+            response = normalize_text_tool_call(
+                agent_model.invoke(state["messages"])
+            )
+        finally:
+            if on_agent_timing is not None:
+                on_agent_timing(perf_counter() - started)
         updates: dict[str, Any] = {
             "messages": [response],
             "tool_iterations": state.get("tool_iterations", 0),

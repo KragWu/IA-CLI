@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 from threading import Event, Lock, Thread
+from time import perf_counter
 from typing import TextIO
 
 
@@ -21,6 +22,7 @@ class CliChatPresenter:
         self._progress_stop = Event()
         self._progress_lock = Lock()
         self._progress_message = ""
+        self._progress_started_at = 0.0
         self._progress_thread: Thread | None = None
 
     def start(self, workspace: Path, model: str) -> None:
@@ -40,8 +42,15 @@ class CliChatPresenter:
     def show_tool_result(self, name: str) -> None:
         self._output(f"outil terminé> {name}")
 
+    def show_action_timing(self, action: str, seconds: float) -> None:
+        self._output(f"temps action> {action} : {self._format_duration(seconds)}")
+
+    def show_total_duration(self, seconds: float) -> None:
+        self._output(f"temps total> demande : {self._format_duration(seconds)}")
+
     def start_progress(self) -> None:
         self._progress_message = "L'agent traite votre demande"
+        self._progress_started_at = perf_counter()
         self._output(f"{self._progress_message}...")
         self._resume_progress()
 
@@ -76,7 +85,11 @@ class CliChatPresenter:
         while not self._progress_stop.wait(0.1):
             with self._progress_lock:
                 message = self._progress_message
-            self._progress_stream.write(f"\r{frames[frame]} {message}...")
+            elapsed = perf_counter() - self._progress_started_at
+            duration = self._format_duration(elapsed)
+            self._progress_stream.write(
+                f"\r{frames[frame]} {message} ({duration})..."
+            )
             self._progress_stream.flush()
             frame = (frame + 1) % len(frames)
 
@@ -100,3 +113,16 @@ class CliChatPresenter:
     def _confirm(self, prompt: str) -> bool:
         answer = self._input(prompt).strip().casefold()
         return answer in {"o", "oui", "y", "yes"}
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        if seconds < 1:
+            milliseconds = seconds * 1000
+            if milliseconds < 10:
+                return f"{milliseconds:.1f} ms"
+            return f"{milliseconds:.0f} ms"
+        if seconds < 60:
+            return f"{seconds:.2f} s"
+        if seconds < 3600:
+            return f"{seconds / 60:.2f} min"
+        return f"{seconds / 3600:.2f} h"

@@ -3,27 +3,13 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from iacli.services.agent_graph import MaxToolIterationsError, build_control_graph
+from tests.fakes import FakeChatModel
 
 
 @tool
 def read_file(path: str) -> str:
     """Read the contents of a file."""
     return f"contents of {path}"
-
-
-class FakeChatModel:
-    def __init__(self, responses: list[AIMessage]) -> None:
-        self.responses = iter(responses)
-        self.calls: list[list] = []
-        self.bound_tools = []
-
-    def bind_tools(self, tools):
-        self.bound_tools = tools
-        return self
-
-    def invoke(self, messages):
-        self.calls.append(messages)
-        return next(self.responses)
 
 
 def test_graph_node_transitions():
@@ -60,6 +46,27 @@ def test_graph_node_transitions():
     assert result["tool_iterations"] == 1
     assert result["evaluation"] == "verified"
     assert len(evaluated_states) == 1
+
+
+def test_agent_timing_callback_reports_each_model_call():
+    model = FakeChatModel(
+        [
+            AIMessage(content='{"name":"read_file","arguments":{"path":"README.md"}}'),
+            AIMessage(content="Réponse finale."),
+        ]
+    )
+    timings = []
+    graph = build_control_graph(
+        model,
+        [read_file],
+        lambda _state: True,
+        on_agent_timing=timings.append,
+    )
+
+    graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert len(timings) == 2
+    assert all(duration >= 0 for duration in timings)
 
 
 def test_graph_routes_json_text_tool_call_through_action_node():
