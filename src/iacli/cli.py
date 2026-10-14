@@ -9,6 +9,7 @@ from iacli.domain.config import OllamaSettings
 from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
 from iacli.infrastructure.system import LocalSystemGateway
+from iacli.services.chat import run_chat
 from iacli.services.initialize import InitializeApplication
 from iacli.services.ports import OllamaGateway
 
@@ -32,15 +33,44 @@ def handle_init(args: argparse.Namespace) -> None:
     use_case.execute(args.config_dir)
 
 
+def handle_chat(args: argparse.Namespace) -> None:
+    """Lance une conversation avec le modèle configuré."""
+    from langchain_ollama import ChatOllama
+
+    configuration = FileConfigurationGateway().ensure_configuration(args.config_dir)
+    if configuration.warnings:
+        raise ValueError(
+            "Configuration illisible : "
+            + "; ".join(configuration.warnings)
+            + ". Corrigez config.toml ou lancez iacli init."
+        )
+    ollama = OllamaClientFactory().create(configuration.ollama)
+    installed_models = ollama.installed_models()
+    model_name = configuration.ollama.default_model
+    if model_name not in installed_models:
+        raise RuntimeError(
+            f"Le modèle {model_name} n'est pas installé. Lancez d'abord `iacli init`."
+        )
+
+    instructions_path = configuration.directory / "IACLI.md"
+    instructions = instructions_path.read_text(encoding="utf-8")
+    model = ChatOllama(
+        model=model_name,
+        base_url=configuration.ollama.base_url,
+        temperature=0,
+    )
+    run_chat(model, Path.cwd().resolve(), instructions, model_name)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construit le parser d'arguments de la CLI."""
     parser = argparse.ArgumentParser(
         prog="iacli",
         description="CLI locale pour les IA open source"
     )
-    commands = parser.add_subparsers(dest="command", required=True)
+    parser.set_defaults(func=handle_chat, config_dir=None)
+    commands = parser.add_subparsers(dest="command")
 
-    # Sous-commande : init
     init_parser = commands.add_parser(
         "init",
         help="Initialiser la configuration globale"
@@ -52,6 +82,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Chemin optionnel vers le dossier de configuration"
     )
     init_parser.set_defaults(func=handle_init)
+
+    chat_parser = commands.add_parser(
+        "chat",
+        help="Démarrer une conversation interactive",
+    )
+    chat_parser.add_argument(
+        "--config-dir",
+        type=Path,
+        default=None,
+        help="Chemin optionnel vers le dossier de configuration",
+    )
+    chat_parser.set_defaults(func=handle_chat)
 
     return parser
 

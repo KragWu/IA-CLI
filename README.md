@@ -23,10 +23,46 @@ Puis lancez le wizard :
 iacli init
 ```
 
+Une fois le modèle configuré et téléchargé, lancez une conversation depuis le dossier
+du projet :
+
+```bash
+iacli
+# ou explicitement
+iacli chat
+```
+
+L'agent peut lire, lister et rechercher les fichiers du projet courant. Il peut aussi
+proposer des modifications ou des commandes shell, mais affiche le diff ou la commande
+et demande votre confirmation avant chaque action. Les chemins de fichiers sont limités
+au projet courant. Utilisez `/exit` ou `/quit` pour fermer la conversation. `iacli init`
+reste disponible pour créer la configuration et télécharger le modèle configuré.
+Pendant le traitement, la CLI affiche un indicateur animé dans un terminal interactif,
+ainsi que le nom des outils appelés et la réception de leurs résultats. Cet affichage
+montre l'avancement sans révéler le raisonnement interne détaillé du modèle.
+Si le modèle Ollama renvoie exceptionnellement un appel d'outil en JSON dans son texte
+plutôt que dans les métadonnées de tool calling, IA-CLI reconnaît le format
+`{"name":"outil","arguments":{...}}` (y compris plusieurs objets JSON séparés par des
+sauts de ligne) pour les outils connus et les transmet au graphe comme de véritables
+appels d'outils. Si un fichier est désigné par son nom seul, sa lecture est résolue
+quand ce nom ne correspond qu'à un seul fichier du projet; les noms ambigus demandent
+un chemin plus précis.
+La lecture et la recherche ignorent les fichiers de plus de 1 000 000 octets; les
+sorties des outils sont limitées à 30 000 caractères pour maîtriser la quantité de
+contenu injectée dans la conversation. Une recherche s'arrête après 100 correspondances
+et ajoute `[résultats limités à 100 correspondances]` comme indication de troncature,
+pas comme message d'erreur.
+Après chaque demande, la CLI affiche le temps de chaque appel au modèle et de chaque
+outil, puis le temps total du tour. Le message animé affiche aussi la durée écoulée
+pendant le traitement. Les durées sont présentées automatiquement en millisecondes,
+secondes, minutes ou heures selon leur valeur. Le total inclut les appels au modèle,
+l'exécution des outils et le temps passé à confirmer une action lorsqu'une confirmation
+est requise.
+
 La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée la configuration globale dans `~/.config/iacli/`, sans remplacer les fichiers déjà présents :
 
 - `config.toml` : source des paramètres utilisés par le wizard : URL de l'instance Ollama, URL du registre des modèles et modèle par défaut (`qwen2.5-coder:7b`). Modifiez ce fichier pour cibler une autre instance ou choisir un autre modèle ; les nouvelles valeurs sont utilisées aux prochains lancements.
-- `IACLI.md` : fichier éditable pour conserver les instructions globales propres à votre usage et à vos projets. `iacli init` le crée comme point de départ et ne remplace jamais vos modifications. Le wizard actuel le prépare, mais ne l'injecte pas encore dans une conversation IA.
+- `IACLI.md` : fichier éditable pour conserver les instructions globales propres à votre usage et à vos projets. `iacli init` le crée comme point de départ et ne remplace jamais vos modifications. Ces instructions sont ajoutées au contexte lors du lancement d'une conversation.
 
 Si le modèle est absent localement, le wizard vérifie qu'il existe dans le registre configuré et récupère la taille de ses couches depuis son manifeste. Il compare cette taille à l'espace disponible dans l'emplacement des modèles Ollama, puis demande confirmation avant le téléchargement. Définissez `OLLAMA_MODELS` si vos modèles sont stockés dans un emplacement personnalisé. En cas de modèle introuvable, de dépendance manquante, d'espace insuffisant ou d'Ollama inaccessible, un avertissement est affiché.
 
@@ -42,9 +78,17 @@ python -m pytest
 Le code est organisé par responsabilités :
 
 - `domain/` contient les objets de configuration et les événements métier.
-- `services/` contient le cas d'usage d'initialisation et ses contrats (`Protocol`).
-- `infrastructure/` fournit les accès au système de fichiers, aux ressources système et à Ollama.
+- `services/` contient les cas d'usage d'initialisation et de conversation ainsi que leurs contrats (`Protocol`).
+- `infrastructure/` fournit les accès au système de fichiers, aux ressources système, à Ollama et aux outils du projet.
 - `adapters/` traduit les événements applicatifs en sortie console et porte les interactions utilisateur.
 
 Le cas d'usage dépend des contrats, ce qui permet de tester ses décisions métier avec des fakes sans exécuter
 la CLI ni dépendre des textes affichés.
+
+## Graphe agent/outils
+
+`iacli.services.agent_graph.build_control_graph` construit un graphe LangGraph dont le modèle compatible
+`bind_tools` et l'évaluateur sont injectés par l'appelant. L'agent route les demandes d'outils vers leur
+exécution, puis réinjecte les `ToolMessage` au modèle. Une réponse sans outil passe par l'évaluateur avant
+la fin du graphe. La limite par défaut est de 25 exécutions d'outils et peut être ajustée avec
+`max_iterations`.
