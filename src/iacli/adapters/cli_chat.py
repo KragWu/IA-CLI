@@ -123,6 +123,10 @@ class CliChatPresenter:
             return f"{milliseconds:.0f} ms"
         if seconds < 60:
             return f"{seconds:.2f} s"
+        whole_seconds = round(seconds)
         if seconds < 3600:
-            return f"{seconds / 60:.2f} min"
-        return f"{seconds / 3600:.2f} h"
+            minutes, remaining_seconds = divmod(whole_seconds, 60)
+            return f"{minutes} min {remaining_seconds:02d} s"
+        hours, remainder = divmod(whole_seconds, 3600)
+        minutes, remaining_seconds = divmod(remainder, 60)
+        return f"{hours} h {minutes:02d} min {remaining_seconds:02d} s"
