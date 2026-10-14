@@ -27,6 +27,26 @@ def test_workspace_read_list_and_search_are_limited_to_project(tmp_path):
     )
 
 
+def test_workspace_tool_timing_callback_reports_tool_duration(tmp_path):
+    (tmp_path / "notes.txt").write_text("contenu", encoding="utf-8")
+    timings = []
+    tools = {
+        item.name: item
+        for item in create_workspace_tools(
+            tmp_path,
+            lambda _path, _diff: False,
+            lambda _command, _cwd: False,
+            lambda name, elapsed: timings.append((name, elapsed)),
+        )
+    }
+
+    tools["read_file"].invoke({"path": "notes.txt"})
+
+    assert len(timings) == 1
+    assert timings[0][0] == "read_file"
+    assert timings[0][1] >= 0
+
+
 def test_workspace_tools_reject_paths_outside_project(tmp_path):
     tools = create_tools(tmp_path)
 
@@ -112,4 +132,4 @@ def test_confirmed_shell_command_uses_project_directory(tmp_path, monkeypatch):
 
     assert "Code de sortie : 0" in result
     assert calls[0][1]["cwd"] == Path(tmp_path).resolve()
-    assert calls[0][1]["timeout"] == 120
+    assert calls[0][1]["timeout"] == 600

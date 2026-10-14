@@ -1,9 +1,12 @@
 """User-approved tools for interacting with the current project workspace."""
 
 import difflib
+from functools import wraps
 import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from time import perf_counter
+from typing import ParamSpec
 
 from langchain_core.tools import BaseTool, tool
 
@@ -17,16 +20,47 @@ IGNORED_DIRECTORIES = {
     "node_modules",
     "venv",
 }
+# Bound per-file reads and search scans to avoid feeding huge files to the model.
 MAX_FILE_BYTES = 1_000_000
+# Bound tool results (including shell output and diffs) sent back into the conversation.
 MAX_TOOL_OUTPUT_CHARS = 30_000
+
+MAX_TIME_FOR_SUBPROCESS = 600
+ToolParameters = ParamSpec("ToolParameters")
 
 
 def create_workspace_tools(
     workspace: Path,
     confirm_file_write: Callable[[str, str], bool],
     confirm_shell_command: Callable[[str, Path], bool],
+    on_action_timing: Callable[[str, float], None] | None = None,
 ) -> list[BaseTool]:
     root = workspace.resolve()
+
+    def measure_action(
+        name: str,
+    ) -> Callable[
+        [Callable[ToolParameters, str]],
+        Callable[ToolParameters, str],
+    ]:
+        def decorator(
+            function: Callable[ToolParameters, str],
+        ) -> Callable[ToolParameters, str]:
+            @wraps(function)
+            def measured(
+                *args: ToolParameters.args,
+                **kwargs: ToolParameters.kwargs,
+            ) -> str:
+                started = perf_counter()
+                try:
+                    return function(*args, **kwargs)
+                finally:
+                    if on_action_timing is not None:
+                        on_action_timing(name, perf_counter() - started)
+
+            return measured
+
+        return decorator
 
     def resolve_path(path: str) -> Path:
         candidate = (root / path).resolve()
@@ -45,6 +79,7 @@ def create_workspace_tools(
                 yield path
 
     @tool
+    @measure_action("read_file")
     def read_file(path: str) -> str:
         """Lire le contenu d'un fichier du projet."""
         file_path = resolve_path(path)
@@ -75,6 +110,7 @@ def create_workspace_tools(
         return content
 
     @tool
+    @measure_action("list_files")
     def list_files(path: str = ".") -> str:
         """Lister les fichiers du projet ou d'un sous-dossier."""
         target = resolve_path(path)
@@ -90,6 +126,7 @@ def create_workspace_tools(
         return "\n".join(results) if results else "Aucun fichier trouvé."
 
     @tool
+    @measure_action("search_files")
     def search_files(query: str, path: str = ".") -> str:
         """Rechercher un texte dans les fichiers du projet, sans distinction de casse."""
         if not query:
@@ -128,6 +165,7 @@ def create_workspace_tools(
         return "\n".join(matches) if matches else "Aucune correspondance."
 
     @tool
+    @measure_action("write_file")
     def write_file(path: str, content: str) -> str:
         """Créer ou remplacer un fichier du projet après confirmation utilisateur."""
         file_path = resolve_path(path)
@@ -163,6 +201,7 @@ def create_workspace_tools(
         return f"Fichier enregistré : {relative_path}"
 
     @tool
+    @measure_action("run_shell")
     def run_shell(command: str) -> str:
         """Exécuter une commande shell dans le projet après confirmation utilisateur."""
         if not command.strip():
@@ -178,7 +217,7 @@ def create_workspace_tools(
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=120,
+                timeout=MAX_TIME_FOR_SUBPROCESS,
                 check=False,
             )
         except subprocess.TimeoutExpired as error:
@@ -189,7 +228,7 @@ def create_workspace_tools(
             if isinstance(error_output, bytes):
                 error_output = error_output.decode("utf-8", errors="replace")
             return (
-                f"Commande interrompue après 120 secondes.\n{output}{error_output}"
+                f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n{output}{error_output}"
             )[:MAX_TOOL_OUTPUT_CHARS]
         output = (
             f"Code de sortie : {result.returncode}\n"

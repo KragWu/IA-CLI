@@ -47,6 +47,17 @@ sauts de ligne) pour les outils connus et les transmet au graphe comme de vérit
 appels d'outils. Si un fichier est désigné par son nom seul, sa lecture est résolue
 quand ce nom ne correspond qu'à un seul fichier du projet; les noms ambigus demandent
 un chemin plus précis.
+La lecture et la recherche ignorent les fichiers de plus de 1 000 000 octets; les
+sorties des outils sont limitées à 30 000 caractères pour maîtriser la quantité de
+contenu injectée dans la conversation. Une recherche s'arrête après 100 correspondances
+et ajoute `[résultats limités à 100 correspondances]` comme indication de troncature,
+pas comme message d'erreur.
+Après chaque demande, la CLI affiche le temps de chaque appel au modèle et de chaque
+outil, puis le temps total du tour. Le message animé affiche aussi la durée écoulée
+pendant le traitement. Les durées sont présentées automatiquement en millisecondes,
+secondes, minutes ou heures selon leur valeur. Le total inclut les appels au modèle,
+l'exécution des outils et le temps passé à confirmer une action lorsqu'une confirmation
+est requise.
 
 La commande vérifie Python, Git, ripgrep et la connexion à Ollama. Elle crée la configuration globale dans `~/.config/iacli/`, sans remplacer les fichiers déjà présents :
 

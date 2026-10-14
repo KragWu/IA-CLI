@@ -1,5 +1,7 @@
 from argparse import Namespace
+from io import StringIO
 from pathlib import Path
+import time
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -7,19 +9,12 @@ from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
 from iacli.domain.config import ConfigurationState, OllamaSettings
 from iacli.services.chat import run_chat
+from tests.fakes import FakeChatModel
 
 
-class FakeChatModel:
-    def __init__(self) -> None:
-        self.calls = []
-
-    def bind_tools(self, tools):
-        self.tools = tools
-        return self
-
-    def invoke(self, messages):
-        self.calls.append(messages)
-        return AIMessage(content=f"Réponse {len(self.calls)}")
+class TtyStringIO(StringIO):
+    def isatty(self):
+        return True
 
 
 def test_cli_without_subcommand_starts_chat():
@@ -117,6 +112,8 @@ def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
     assert model.calls[1][-1].content == "deuxième demande"
     assert any("Réponse 1" in line for line in output)
     assert any("Réponse 2" in line for line in output)
+    assert sum(line.startswith("temps action> modèle") for line in output) == 2
+    assert sum(line.startswith("temps total> demande") for line in output) == 2
 
 
 def test_chat_reports_tool_progress(tmp_path):
@@ -231,3 +228,28 @@ def test_chat_exits_cleanly_on_end_of_input(tmp_path):
     )
 
     run_chat(FakeChatModel(), tmp_path, "", "fake-model", presenter=presenter)
+
+
+def test_progress_animation_displays_elapsed_time():
+    stream = TtyStringIO()
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: "",
+        output_fn=lambda _line: None,
+        progress_stream=stream,
+    )
+
+    presenter.start_progress()
+    time.sleep(0.15)
+    presenter.stop_progress()
+
+    assert "L'agent traite votre demande (" in stream.getvalue()
+    assert " ms)..." in stream.getvalue() or " s)..." in stream.getvalue()
+
+
+def test_duration_formatter_uses_milliseconds_seconds_minutes_and_hours():
+    format_duration = CliChatPresenter._format_duration
+
+    assert format_duration(0.5) == "500 ms"
+    assert format_duration(1.25) == "1.25 s"
+    assert format_duration(60) == "1.00 min"
+    assert format_duration(3600) == "1.00 h"
