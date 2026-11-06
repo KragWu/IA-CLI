@@ -236,3 +236,28 @@ def test_closed_input_during_a_tool_is_not_returned_to_the_model():
         graph.invoke({"messages": [HumanMessage(content="Écris a.txt")]})
 
     assert len(model.calls) == 1
+
+
+def test_json_text_tool_call_conversion_keeps_usage_and_extra_fields():
+    usage = {"input_tokens": 900, "output_tokens": 100, "total_tokens": 1000}
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content='{"name":"read_file","arguments":{"path":"README.md"}}',
+                usage_metadata=usage,
+                additional_kwargs={"origine": "texte"},
+            ),
+            AIMessage(content="Terminé."),
+        ]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: "verified")
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    converted = next(
+        message
+        for message in result["messages"]
+        if isinstance(message, AIMessage) and message.tool_calls
+    )
+    assert converted.usage_metadata == usage
+    assert converted.additional_kwargs == {"origine": "texte"}
