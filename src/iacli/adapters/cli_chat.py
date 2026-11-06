@@ -22,6 +22,9 @@ class CliChatPresenter:
         self._progress_stop = Event()
         self._progress_lock = Lock()
         self._output_lock = RLock()
+        # Sérialise démarrage et arrêt du thread d'animation : les confirmations
+        # d'outils les appellent depuis le thread d'exécution des outils.
+        self._thread_lock = RLock()
         self._progress_message = ""
         self._progress_started_at = 0.0
         self._progress_thread: Thread | None = None
@@ -88,24 +91,29 @@ class CliChatPresenter:
     def _resume_progress(self) -> None:
         if not self._progress_stream.isatty():
             return
-        if self._progress_thread is not None:
-            return
-        self._progress_stop.clear()
-        self._progress_thread = Thread(target=self._animate_progress, daemon=True)
-        self._progress_thread.start()
+        with self._thread_lock:
+            if self._progress_thread is not None:
+                return
+            self._progress_stop.clear()
+            thread = Thread(target=self._animate_progress, daemon=True)
+            thread.start()
+            self._progress_thread = thread
 
     def update_progress(self, message: str) -> None:
         with self._progress_lock:
             self._progress_message = message
 
     def stop_progress(self) -> None:
-        if self._progress_thread is None:
-            return
-        self._progress_stop.set()
-        self._progress_thread.join()
-        self._progress_thread = None
-        self._progress_stream.write("\r\033[2K")
-        self._progress_stream.flush()
+        with self._thread_lock:
+            thread = self._progress_thread
+            if thread is None:
+                return
+            self._progress_stop.set()
+            thread.join()
+            self._progress_thread = None
+            with self._output_lock:
+                self._progress_stream.write("\r\033[2K")
+                self._progress_stream.flush()
 
     def _animate_progress(self) -> None:
         frames = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
