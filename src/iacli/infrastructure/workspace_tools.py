@@ -284,6 +284,10 @@ def create_workspace_tools(
                 f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n"
                 f"{stdout or ''}{stderr or ''}"
             )[:MAX_TOOL_OUTPUT_CHARS]
+        except KeyboardInterrupt:
+            # Ctrl+C annule le tour : ne pas laisser la commande tourner en arrière-plan.
+            _kill_process_tree(process)
+            raise
         output = (
             f"Code de sortie : {process.returncode}\n"
             f"{stdout}{stderr}"
