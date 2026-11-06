@@ -1,5 +1,6 @@
 from pathlib import Path
-import subprocess
+import sys
+import time
 
 import pytest
 
@@ -120,32 +121,43 @@ def test_confirmed_write_creates_file_in_project(tmp_path):
     )
 
 
-def test_shell_command_requires_confirmation_before_execution(tmp_path, monkeypatch):
-    executed = []
-    monkeypatch.setattr(
-        "iacli.infrastructure.workspace_tools.subprocess.run",
-        lambda *args, **kwargs: executed.append((args, kwargs)),
-    )
+def test_shell_command_requires_confirmation_before_execution(tmp_path):
+    marker = tmp_path / "executed.txt"
     tools = create_tools(tmp_path)
 
-    result = tools["run_shell"].invoke({"command": "echo no"})
+    result = tools["run_shell"].invoke({"command": "echo no > executed.txt"})
 
     assert result == "Exécution de la commande refusée par l'utilisateur."
-    assert executed == []
+    assert not marker.exists()
 
 
-def test_confirmed_shell_command_uses_project_directory(tmp_path, monkeypatch):
-    calls = []
-
-    def fake_run(*args, **kwargs):
-        calls.append((args, kwargs))
-        return subprocess.CompletedProcess(args[0], 0, "ok\n", "")
-
-    monkeypatch.setattr("iacli.infrastructure.workspace_tools.subprocess.run", fake_run)
+def test_confirmed_shell_command_uses_project_directory(tmp_path):
     tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
 
-    result = tools["run_shell"].invoke({"command": "echo ok"})
+    result = tools["run_shell"].invoke(
+        {"command": f'"{sys.executable}" -c "import os; print(os.getcwd())"'}
+    )
 
     assert "Code de sortie : 0" in result
-    assert calls[0][1]["cwd"] == Path(tmp_path).resolve()
-    assert calls[0][1]["timeout"] == 600
+    assert str(Path(tmp_path).resolve()) in result
+
+
+def test_shell_timeout_kills_child_processes_and_returns(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "iacli.infrastructure.workspace_tools.MAX_TIME_FOR_SUBPROCESS", 1
+    )
+    script = tmp_path / "spawn.py"
+    script.write_text(
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])\n"
+        "time.sleep(20)\n",
+        encoding="utf-8",
+    )
+    tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
+
+    started = time.perf_counter()
+    result = tools["run_shell"].invoke({"command": f'"{sys.executable}" spawn.py'})
+    elapsed = time.perf_counter() - started
+
+    assert "interrompue après 1 secondes" in result
+    assert elapsed < 10
