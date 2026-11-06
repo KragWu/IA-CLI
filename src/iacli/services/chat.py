@@ -2,9 +2,10 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from time import perf_counter
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.infrastructure.workspace_tools import create_workspace_tools
@@ -74,40 +75,57 @@ def run_chat(
             continue
         chat_presenter.start_progress()
         request_started = perf_counter()
-        result = None
         try:
-            for state in graph.stream(
-                {"messages": [*messages, HumanMessage(content=user_input)]},
-                config={"max_concurrency": 1},
-                stream_mode="values",
-            ):
-                result = state
-                latest_message = state["messages"][-1]
-                if isinstance(latest_message, AIMessage) and latest_message.tool_calls:
-                    tool_names = ", ".join(
-                        tool_call["name"] for tool_call in latest_message.tool_calls
-                    )
-                    chat_presenter.update_progress(f"Appel des outils : {tool_names}")
-                    for tool_call in latest_message.tool_calls:
-                        chat_presenter.show_tool_call(
-                            tool_call["name"],
-                            tool_call["args"],
-                        )
-                elif isinstance(latest_message, ToolMessage):
-                    chat_presenter.update_progress(
-                        f"Résultat de {latest_message.name} reçu; l'agent poursuit"
-                    )
-                    chat_presenter.show_tool_result(latest_message.name)
-                elif isinstance(latest_message, AIMessage):
-                    chat_presenter.update_progress("Préparation de la réponse")
-        finally:
-            chat_presenter.stop_progress()
-            chat_presenter.show_total_duration(perf_counter() - request_started)
-
-        if result is None:
-            raise RuntimeError("Le graphe agent n'a produit aucun état.")
-        messages = result["messages"]
-        response = messages[-1].content
-        if not isinstance(response, str):
-            raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
+            response, messages = _run_turn(
+                graph, messages, user_input, chat_presenter, request_started
+            )
+        except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
+            chat_presenter.show_error(str(error) or type(error).__name__)
+            continue
         chat_presenter.show_response(response)
+
+
+def _run_turn(
+    graph: Any,
+    messages: list[BaseMessage],
+    user_input: str,
+    chat_presenter: CliChatPresenter,
+    request_started: float,
+) -> tuple[str, list[BaseMessage]]:
+    result = None
+    try:
+        for state in graph.stream(
+            {"messages": [*messages, HumanMessage(content=user_input)]},
+            config={"max_concurrency": 1},
+            stream_mode="values",
+        ):
+            result = state
+            latest_message = state["messages"][-1]
+            if isinstance(latest_message, AIMessage) and latest_message.tool_calls:
+                tool_names = ", ".join(
+                    tool_call["name"] for tool_call in latest_message.tool_calls
+                )
+                chat_presenter.update_progress(f"Appel des outils : {tool_names}")
+                for tool_call in latest_message.tool_calls:
+                    chat_presenter.show_tool_call(
+                        tool_call["name"],
+                        tool_call["args"],
+                    )
+            elif isinstance(latest_message, ToolMessage):
+                chat_presenter.update_progress(
+                    f"Résultat de {latest_message.name} reçu; l'agent poursuit"
+                )
+                chat_presenter.show_tool_result(latest_message.name)
+            elif isinstance(latest_message, AIMessage):
+                chat_presenter.update_progress("Préparation de la réponse")
+    finally:
+        chat_presenter.stop_progress()
+        chat_presenter.show_total_duration(perf_counter() - request_started)
+
+    if result is None:
+        raise RuntimeError("Le graphe agent n'a produit aucun état.")
+    new_messages = result["messages"]
+    response = new_messages[-1].content
+    if not isinstance(response, str):
+        raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
+    return response, new_messages
