@@ -199,11 +199,20 @@ def create_workspace_tools(
         if file_path.exists() and file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour modification : {path}")
 
-        previous = (
-            file_path.read_text(encoding="utf-8").splitlines(keepends=True)
-            if file_path.exists()
-            else []
-        )
+        newline = "\n"
+        previous: list[str] = []
+        if file_path.exists():
+            try:
+                with file_path.open(encoding="utf-8", newline="") as existing:
+                    existing_content = existing.read()
+            except UnicodeDecodeError as error:
+                raise ValueError(
+                    f"Le fichier existant n'est pas encodé en UTF-8 : {path}"
+                ) from error
+            if "\r\n" in existing_content:
+                newline = "\r\n"
+            previous = existing_content.replace("\r\n", "\n").splitlines(keepends=True)
+        content = content.replace("\r\n", "\n")
         proposed = content.splitlines(keepends=True)
         diff = "".join(
             difflib.unified_diff(
@@ -227,7 +236,8 @@ def create_workspace_tools(
             return f"Modification refusée par l'utilisateur : {relative_path}"
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        with file_path.open("w", encoding="utf-8", newline="") as target:
+            target.write(content.replace("\n", newline))
         return f"Fichier enregistré : {relative_path}"
 
     @tool
