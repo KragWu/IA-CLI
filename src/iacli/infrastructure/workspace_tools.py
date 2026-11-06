@@ -111,6 +111,12 @@ def create_workspace_tools(
     def read_file(path: str) -> str:
         """Lire le contenu d'un fichier du projet."""
         file_path = resolve_path(path)
+        if file_path.is_dir():
+            raise IsADirectoryError(
+                f"Le chemin est un dossier : {path}. "
+                "Utilisez list_files pour lister son contenu."
+            )
+        notice = ""
         if not file_path.is_file():
             candidates = [
                 candidate
@@ -119,6 +125,10 @@ def create_workspace_tools(
             ]
             if len(candidates) == 1:
                 file_path = candidates[0]
+                notice = (
+                    f"[Chemin demandé introuvable : {path} ; "
+                    f"fichier lu : {file_path.relative_to(root).as_posix()}]\n"
+                )
             elif len(candidates) > 1:
                 choices = ", ".join(
                     candidate.relative_to(root).as_posix()
@@ -139,8 +149,8 @@ def create_workspace_tools(
                 f"Le fichier n'est pas un texte encodé en UTF-8 : {path}"
             ) from error
         if len(content) > MAX_TOOL_OUTPUT_CHARS:
-            return content[:MAX_TOOL_OUTPUT_CHARS] + "\n[contenu tronqué]"
-        return content
+            return notice + content[:MAX_TOOL_OUTPUT_CHARS] + "\n[contenu tronqué]"
+        return notice + content
 
     @tool
     @measure_action("list_files")

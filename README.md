@@ -53,8 +53,10 @@ plutôt que dans les métadonnées de tool calling, IA-CLI reconnaît le format
 `{"name":"outil","arguments":{...}}` (y compris plusieurs objets JSON séparés par des
 sauts de ligne) pour les outils connus et les transmet au graphe comme de véritables
 appels d'outils. Si un fichier est désigné par son nom seul, sa lecture est résolue
-quand ce nom ne correspond qu'à un seul fichier du projet; les noms ambigus demandent
-un chemin plus précis.
+quand ce nom ne correspond qu'à un seul fichier du projet; le résultat commence alors par
+`[Chemin demandé introuvable : … ; fichier lu : …]` pour que le modèle sache quel fichier
+a réellement été lu. Les noms ambigus demandent un chemin plus précis, et un chemin
+qui désigne un dossier est refusé (utiliser `list_files`).
 La lecture et la recherche ignorent les fichiers de plus de 1 000 000 octets; les
 sorties des outils sont limitées à 30 000 caractères pour maîtriser la quantité de
 contenu injectée dans la conversation. Une recherche s'arrête après 100 correspondances
