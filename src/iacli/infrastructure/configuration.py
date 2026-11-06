@@ -3,12 +3,15 @@
 import tomllib
 from pathlib import Path
 
-from iacli.domain.config import ConfigurationState, OllamaSettings
+from iacli.domain.config import DEFAULT_NUM_CTX, ConfigurationState, OllamaSettings
 
 DEFAULT_CONFIG = """[ollama]
 base_url = "http://localhost:11434"
 registry_url = "https://registry.ollama.ai"
 model = "qwen2.5-coder:7b"
+# Fenêtre de contexte demandée à Ollama (en tokens). Elle ne doit pas dépasser
+# le contexte maximal du modèle choisi.
+num_ctx = 18000
 """
 
 DEFAULT_INSTRUCTIONS = """# Instructions globales IA-CLI
@@ -41,11 +44,12 @@ class FileConfigurationGateway:
             base_url=values["base_url"].rstrip("/"),
             registry_url=values["registry_url"].rstrip("/"),
             default_model=values["model"],
+            num_ctx=values["num_ctx"],
         )
         return ConfigurationState(target, settings, tuple(warnings))
 
     @staticmethod
-    def _load_values(config_path: Path) -> tuple[dict[str, str], list[str]]:
+    def _load_values(config_path: Path) -> tuple[dict[str, str | int], list[str]]:
         try:
             with config_path.open("rb") as config_file:
                 document = tomllib.load(config_file)
@@ -54,12 +58,18 @@ class FileConfigurationGateway:
             ollama = document.get("ollama", {})
             if not isinstance(ollama, dict):
                 raise ValueError("La section [ollama] doit être une table TOML.")
-            values: dict[str, str] = {}
+            values: dict[str, str | int] = {}
             for key, default in _DEFAULT_OLLAMA.items():
                 value = ollama.get(key, default)
                 if not isinstance(value, str) or not value.strip():
                     raise ValueError(f"La valeur ollama.{key} doit être une chaîne non vide.")
                 values[key] = value.strip()
+            num_ctx = ollama.get("num_ctx", DEFAULT_NUM_CTX)
+            if isinstance(num_ctx, bool) or not isinstance(num_ctx, int) or num_ctx < 1:
+                raise ValueError(
+                    "La valeur ollama.num_ctx doit être un entier strictement positif."
+                )
+            values["num_ctx"] = num_ctx
         except (OSError, tomllib.TOMLDecodeError, ValueError) as error:
-            return _DEFAULT_OLLAMA.copy(), [str(error)]
+            return {**_DEFAULT_OLLAMA, "num_ctx": DEFAULT_NUM_CTX}, [str(error)]
         return values, []

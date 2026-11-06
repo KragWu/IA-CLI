@@ -349,3 +349,44 @@ def test_ollama_model_info_reads_api_show(fake_urlopen):
     request = fake_urlopen.requests[0][0]
     assert request.get_method() == "POST"
     assert json.loads(request.data) == {"model": "coder:latest"}
+
+
+def test_configuration_gateway_defaults_num_ctx_to_18000(tmp_path):
+    state = FileConfigurationGateway().ensure_configuration(tmp_path / "iacli")
+
+    assert state.ollama.num_ctx == 18000
+    created = (state.directory / "config.toml").read_text(encoding="utf-8")
+    assert "num_ctx = 18000" in created
+
+
+def test_configuration_gateway_reads_custom_num_ctx(tmp_path):
+    config_directory = tmp_path / "iacli"
+    config_directory.mkdir()
+    (config_directory / "config.toml").write_text(
+        """[ollama]
+num_ctx = 8192
+""",
+        encoding="utf-8",
+    )
+
+    state = FileConfigurationGateway().ensure_configuration(config_directory)
+
+    assert state.ollama.num_ctx == 8192
+    assert state.warnings == ()
+
+
+@pytest.mark.parametrize("invalid", ['"abc"', "0", "-5", "true", "1.5"])
+def test_configuration_gateway_rejects_invalid_num_ctx(tmp_path, invalid):
+    config_directory = tmp_path / "iacli"
+    config_directory.mkdir()
+    (config_directory / "config.toml").write_text(
+        f"""[ollama]
+num_ctx = {invalid}
+""",
+        encoding="utf-8",
+    )
+
+    state = FileConfigurationGateway().ensure_configuration(config_directory)
+
+    assert any("num_ctx" in warning for warning in state.warnings)
+    assert state.ollama.num_ctx == 18000

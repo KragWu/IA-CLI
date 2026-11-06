@@ -41,6 +41,7 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
         "http://ollama.test:11434",
         "https://registry.ollama.ai",
         "coder:latest",
+        num_ctx=8192,
     )
     state = ConfigurationState(tmp_path, settings)
     model = object()
@@ -97,6 +98,7 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
         "model": "coder:latest",
         "base_url": "http://ollama.test:11434",
         "temperature": 0,
+        "num_ctx": 8192,
     }
 
 
