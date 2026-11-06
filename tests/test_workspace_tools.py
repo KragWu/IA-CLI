@@ -488,3 +488,36 @@ def test_write_file_accepts_content_at_the_size_limit_up_to_the_diff_check(tmp_p
 
     assert "trop volumineuse pour être affichée" in result
     assert not (tmp_path / "limite.txt").exists()
+
+
+def test_run_shell_does_not_share_the_console_input_with_the_command(
+    tmp_path, monkeypatch
+):
+    popen_options = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        popen_options.append(kwargs)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", recording_popen)
+    tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
+
+    tools["run_shell"].invoke({"command": "echo bonjour"})
+
+    assert popen_options[0]["stdin"] is subprocess.DEVNULL
+
+
+def test_run_shell_command_reading_stdin_gets_end_of_input_immediately(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(workspace_tools, "MAX_TIME_FOR_SUBPROCESS", 10)
+    command = f'"{sys.executable}" -c "import sys; print(repr(sys.stdin.read()))"'
+    tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
+
+    started = time.perf_counter()
+    result = tools["run_shell"].invoke({"command": command})
+
+    assert "Code de sortie : 0" in result
+    assert "''" in result
+    assert time.perf_counter() - started < 8

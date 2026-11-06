@@ -313,6 +313,9 @@ def create_workspace_tools(
             command,
             shell=True,
             cwd=root,
+            # Ne pas partager la console du chat : une commande qui lit l'entrée
+            # volerait ce que l'utilisateur tape.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             **_new_process_group_options(),
