@@ -2,6 +2,8 @@
 
 import difflib
 from functools import wraps
+import os
+import signal
 import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -26,7 +28,30 @@ MAX_FILE_BYTES = 1_000_000
 MAX_TOOL_OUTPUT_CHARS = 30_000
 
 MAX_TIME_FOR_SUBPROCESS = 600
+# Time allowed to collect output once a timed-out process tree has been killed.
+KILL_GRACE_SECONDS = 5
 ToolParameters = ParamSpec("ToolParameters")
+
+
+def _new_process_group_options() -> dict[str, object]:
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _kill_process_tree(process: subprocess.Popen[str]) -> None:
+    """Kill a shell and every process it started, not only the shell itself."""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            check=False,
+        )
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def create_workspace_tools(
@@ -213,31 +238,32 @@ def create_workspace_tools(
             raise ValueError("La commande shell ne peut pas être vide.")
         if not confirm_shell_command(command, root):
             return "Exécution de la commande refusée par l'utilisateur."
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **_new_process_group_options(),
+        )
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=MAX_TIME_FOR_SUBPROCESS,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            output = error.stdout or ""
-            if isinstance(output, bytes):
-                output = output.decode("utf-8", errors="replace")
-            error_output = error.stderr or ""
-            if isinstance(error_output, bytes):
-                error_output = error_output.decode("utf-8", errors="replace")
+            stdout, stderr = process.communicate(timeout=MAX_TIME_FOR_SUBPROCESS)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(process)
+            try:
+                stdout, stderr = process.communicate(timeout=KILL_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                stdout, stderr = "", ""
             return (
-                f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n{output}{error_output}"
+                f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n"
+                f"{stdout or ''}{stderr or ''}"
             )[:MAX_TOOL_OUTPUT_CHARS]
         output = (
-            f"Code de sortie : {result.returncode}\n"
-            f"{result.stdout}{result.stderr}"
+            f"Code de sortie : {process.returncode}\n"
+            f"{stdout}{stderr}"
         )
         if len(output) > MAX_TOOL_OUTPUT_CHARS:
             output = output[:MAX_TOOL_OUTPUT_CHARS] + "\n[sortie tronquée]"
