@@ -214,6 +214,7 @@ def create_workspace_tools(
 
         newline = "\n"
         previous: list[str] = []
+        line_ending_warning = ""
         if file_path.exists():
             try:
                 with file_path.open(encoding="utf-8", newline="") as existing:
@@ -222,8 +223,16 @@ def create_workspace_tools(
                 raise ValueError(
                     f"Le fichier existant n'est pas encodé en UTF-8 : {path}"
                 ) from error
-            if "\r\n" in existing_content:
+            crlf_count = existing_content.count("\r\n")
+            lf_count = existing_content.count("\n") - crlf_count
+            if crlf_count:
                 newline = "\r\n"
+            if crlf_count and lf_count:
+                line_ending_warning = (
+                    "Attention : le fichier contient des fins de ligne mixtes "
+                    f"({crlf_count} CRLF, {lf_count} LF) ; toutes seront converties "
+                    "en CRLF.\n"
+                )
             previous = existing_content.replace("\r\n", "\n").splitlines(keepends=True)
         content = content.replace("\r\n", "\n")
         proposed = content.splitlines(keepends=True)
@@ -247,7 +256,7 @@ def create_workspace_tools(
                 f"maximum {MAX_TOOL_OUTPUT_CHARS}). Découpez-la en plusieurs "
                 "modifications plus petites."
             )
-        if not confirm_file_write(relative_path, diff):
+        if not confirm_file_write(relative_path, line_ending_warning + diff):
             return f"Modification refusée par l'utilisateur : {relative_path}"
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
