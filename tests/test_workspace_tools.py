@@ -161,3 +161,59 @@ def test_shell_timeout_kills_child_processes_and_returns(tmp_path, monkeypatch):
 
     assert "interrompue après 1 secondes" in result
     assert elapsed < 10
+
+
+def test_write_file_keeps_lf_line_endings_of_existing_file(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_bytes(b"un\ndeux\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    tools["write_file"].invoke({"path": "notes.txt", "content": "un\ndeux\ntrois\n"})
+
+    assert target.read_bytes() == b"un\ndeux\ntrois\n"
+
+
+def test_write_file_keeps_crlf_line_endings_of_existing_file(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_bytes(b"un\r\ndeux\r\n")
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    tools["write_file"].invoke({"path": "notes.txt", "content": "un\ndeux\ntrois\n"})
+
+    assert target.read_bytes() == b"un\r\ndeux\r\ntrois\r\n"
+    assert "-un" not in diffs[0]
+    assert "+trois" in diffs[0]
+
+
+def test_write_file_reports_no_modification_when_only_line_endings_differ(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_bytes(b"un\r\ndeux\r\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    result = tools["write_file"].invoke({"path": "notes.txt", "content": "un\ndeux\n"})
+
+    assert result.startswith("Aucune modification")
+    assert target.read_bytes() == b"un\r\ndeux\r\n"
+
+
+def test_write_file_writes_new_file_without_converting_line_endings(tmp_path):
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    tools["write_file"].invoke({"path": "new.txt", "content": "un\ndeux\n"})
+
+    assert (tmp_path / "new.txt").read_bytes() == b"un\ndeux\n"
+
+
+def test_write_file_rejects_existing_file_that_is_not_utf8(tmp_path):
+    target = tmp_path / "latin.txt"
+    target.write_bytes("caf\xe9\n".encode("latin-1"))
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="UTF-8"):
+        tools["write_file"].invoke({"path": "latin.txt", "content": "autre\n"})
+
+    assert target.read_bytes() == "caf\xe9\n".encode("latin-1")
