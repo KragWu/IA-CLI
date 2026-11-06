@@ -59,7 +59,9 @@ a réellement été lu. Les noms ambigus demandent un chemin plus précis, et un
 qui désigne un dossier est refusé (utiliser `list_files`).
 La lecture et la recherche ignorent les fichiers de plus de 1 000 000 octets; les
 sorties des outils sont limitées à 30 000 caractères pour maîtriser la quantité de
-contenu injectée dans la conversation. Une recherche s'arrête après 100 correspondances
+contenu injectée dans la conversation. Pour une commande shell, la sortie standard et la
+sortie d'erreur sont tronquées séparément (`[sortie tronquée]`) afin qu'une longue sortie
+n'efface pas l'erreur. Une recherche s'arrête après 100 correspondances
 et ajoute `[résultats limités à 100 correspondances]` comme indication de troncature,
 pas comme message d'erreur.
 Quand Ollama renvoie le nombre de tokens consommés, la CLI affiche aussi, après chaque tour,

@@ -60,6 +60,27 @@ def _decode_output(data: bytes) -> str:
         return data.decode(_console_encoding(), errors="replace")
 
 
+SHELL_TRUNCATION_MARKER = "\n[sortie tronquée]\n"
+
+
+def _truncate(text: str, budget: int) -> str:
+    if len(text) <= budget:
+        return text
+    return text[: max(budget - len(SHELL_TRUNCATION_MARKER), 0)] + SHELL_TRUNCATION_MARKER
+
+
+def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
+    """Assemble en-tête, stdout et stderr dans la limite des sorties d'outils.
+
+    Chaque flux est tronqué séparément (début conservé, marqueur ajouté) : une sortie
+    standard volumineuse ne doit pas faire disparaître l'erreur écrite sur stderr."""
+    budget = MAX_TOOL_OUTPUT_CHARS - len(header)
+    stdout_budget = max(budget // 2, budget - len(stderr))
+    stdout_part = _truncate(stdout, stdout_budget)
+    stderr_part = _truncate(stderr, budget - len(stdout_part))
+    return header + stdout_part + stderr_part
+
+
 def _kill_process_tree(process: subprocess.Popen) -> None:
     """Kill a shell and every process it started, not only the shell itself."""
     if os.name == "nt":
@@ -328,20 +349,19 @@ def create_workspace_tools(
                 stdout, stderr = process.communicate(timeout=KILL_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
                 stdout, stderr = b"", b""
-            return (
-                f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n"
-                f"{_decode_output(stdout or b'')}{_decode_output(stderr or b'')}"
-            )[:MAX_TOOL_OUTPUT_CHARS]
+            return _format_shell_result(
+                f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n",
+                _decode_output(stdout or b""),
+                _decode_output(stderr or b""),
+            )
         except KeyboardInterrupt:
             # Ctrl+C annule le tour : ne pas laisser la commande tourner en arrière-plan.
             _kill_process_tree(process)
             raise
-        output = (
-            f"Code de sortie : {process.returncode}\n"
-            f"{_decode_output(stdout)}{_decode_output(stderr)}"
+        return _format_shell_result(
+            f"Code de sortie : {process.returncode}\n",
+            _decode_output(stdout),
+            _decode_output(stderr),
         )
-        if len(output) > MAX_TOOL_OUTPUT_CHARS:
-            output = output[:MAX_TOOL_OUTPUT_CHARS] + "\n[sortie tronquée]"
-        return output
 
     return [read_file, list_files, search_files, write_file, run_shell]
