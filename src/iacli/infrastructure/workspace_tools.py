@@ -132,7 +132,12 @@ def create_workspace_tools(
                 raise FileNotFoundError(f"Fichier introuvable : {path}")
         if file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour lecture : {path}")
-        content = file_path.read_text(encoding="utf-8")
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError(
+                f"Le fichier n'est pas un texte encodé en UTF-8 : {path}"
+            ) from error
         if len(content) > MAX_TOOL_OUTPUT_CHARS:
             return content[:MAX_TOOL_OUTPUT_CHARS] + "\n[contenu tronqué]"
         return content

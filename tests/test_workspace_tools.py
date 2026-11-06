@@ -257,3 +257,14 @@ def test_search_reports_skipped_files_even_when_results_are_truncated(tmp_path):
 
     assert "[résultats limités à 100 correspondances]" in result
     assert "[fichiers ignorés : 0 trop volumineux, 1 non UTF-8]" in result
+
+
+def test_read_file_rejects_file_that_is_not_utf8(tmp_path):
+    (tmp_path / "latin.txt").write_bytes("caf\xe9\n".encode("latin-1"))
+    (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\xff")
+    tools = create_tools(tmp_path)
+
+    for name in ("latin.txt", "image.png"):
+        with pytest.raises(ValueError, match="UTF-8") as error:
+            tools["read_file"].invoke({"path": name})
+        assert name in str(error.value)
