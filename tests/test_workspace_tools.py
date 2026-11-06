@@ -452,3 +452,39 @@ def test_run_shell_decodes_output_written_in_the_console_code_page(tmp_path):
 
     assert "répertoire été" in result
     assert "�" not in result
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["a" * 1_000_001, "é" * 600_000],
+    ids=["ascii-1000001-octets", "accents-1200000-octets"],
+)
+def test_write_file_rejects_oversized_content_before_computing_the_diff(
+    tmp_path, monkeypatch, content
+):
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("le diff ne doit pas être calculé")
+
+    monkeypatch.setattr(workspace_tools.difflib, "unified_diff", fail_if_called)
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    with pytest.raises(ValueError, match="trop volumineux"):
+        tools["write_file"].invoke({"path": "enorme.txt", "content": content})
+
+    assert confirmations == []
+    assert not (tmp_path / "enorme.txt").exists()
+
+
+def test_write_file_accepts_content_at_the_size_limit_up_to_the_diff_check(tmp_path):
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    result = tools["write_file"].invoke(
+        {"path": "limite.txt", "content": "a" * 1_000_000}
+    )
+
+    assert "trop volumineuse pour être affichée" in result
+    assert not (tmp_path / "limite.txt").exists()

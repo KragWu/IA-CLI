@@ -242,6 +242,12 @@ def create_workspace_tools(
             raise IsADirectoryError(f"Le chemin n'est pas un fichier : {path}")
         if file_path.exists() and file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour modification : {path}")
+        content_bytes = len(content.encode("utf-8"))
+        if content_bytes > MAX_FILE_BYTES:
+            raise ValueError(
+                f"Contenu trop volumineux pour être écrit : {path} "
+                f"({content_bytes} octets, maximum {MAX_FILE_BYTES})"
+            )
 
         newline = "\n"
         previous: list[str] = []
