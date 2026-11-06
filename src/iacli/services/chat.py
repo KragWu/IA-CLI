@@ -141,6 +141,12 @@ def _run_turn(
             error=RuntimeError("Tour interrompu par l'utilisateur."),
             context_tokens=_context_tokens(last_messages, len(messages) + 1),
         )
+    except EOFError:
+        return _TurnOutcome(
+            _without_incomplete_tail(last_messages),
+            error=RuntimeError("L'entrée standard a été fermée pendant le tour."),
+            context_tokens=_context_tokens(last_messages, len(messages) + 1),
+        )
     except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
         return _TurnOutcome(
             _without_incomplete_tail(last_messages),

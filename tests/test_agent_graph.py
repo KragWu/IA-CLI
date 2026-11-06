@@ -205,3 +205,34 @@ def test_tool_exception_is_returned_to_the_model_instead_of_aborting():
     assert "Fichier introuvable : absent.md" in tool_message.content
     assert model.calls[1][-1] == tool_message
     assert result["messages"][-1].content == "Le fichier n'existe pas."
+
+
+@tool
+def closed_input_tool(path: str) -> str:
+    """Fail as if stdin was closed during a confirmation."""
+    raise EOFError
+
+
+def test_closed_input_during_a_tool_is_not_returned_to_the_model():
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "closed_input_tool",
+                        "args": {"path": "a.txt"},
+                        "id": "eof-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Je réessaie."),
+        ]
+    )
+    graph = build_control_graph(model, [closed_input_tool], lambda _state: "verified")
+
+    with pytest.raises(EOFError):
+        graph.invoke({"messages": [HumanMessage(content="Écris a.txt")]})
+
+    assert len(model.calls) == 1
