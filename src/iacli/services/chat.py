@@ -68,7 +68,7 @@ def run_chat(
     while True:
         try:
             user_input = chat_presenter.prompt().strip()
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             return
         if user_input.casefold() in {"/exit", "/quit"}:
             return
@@ -127,6 +127,11 @@ def _run_turn(
         response = last_messages[-1].content
         if not isinstance(response, str):
             raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
+    except KeyboardInterrupt:
+        return _TurnOutcome(
+            _without_incomplete_tail(last_messages),
+            error=RuntimeError("Tour interrompu par l'utilisateur."),
+        )
     except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
         return _TurnOutcome(_without_incomplete_tail(last_messages), error=error)
     return _TurnOutcome(last_messages, response)

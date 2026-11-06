@@ -1,10 +1,12 @@
 from pathlib import Path
 import os
+import subprocess
 import sys
 import time
 
 import pytest
 
+from iacli.infrastructure import workspace_tools
 from iacli.infrastructure.workspace_tools import create_workspace_tools
 
 
@@ -268,3 +270,28 @@ def test_read_file_rejects_file_that_is_not_utf8(tmp_path):
         with pytest.raises(ValueError, match="UTF-8") as error:
             tools["read_file"].invoke({"path": name})
         assert name in str(error.value)
+
+
+def test_interrupted_shell_command_kills_its_process_tree(tmp_path, monkeypatch):
+    command = f'"{sys.executable}" -c "import time; time.sleep(30)"'
+    killed = []
+    real_communicate = subprocess.Popen.communicate
+    real_kill = workspace_tools._kill_process_tree
+
+    def interrupted_communicate(self, *args, **kwargs):
+        if self.args == command:
+            raise KeyboardInterrupt
+        return real_communicate(self, *args, **kwargs)
+
+    def recording_kill(process):
+        killed.append(process.args)
+        real_kill(process)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted_communicate)
+    monkeypatch.setattr(workspace_tools, "_kill_process_tree", recording_kill)
+    tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
+
+    with pytest.raises(KeyboardInterrupt):
+        tools["run_shell"].invoke({"command": command})
+
+    assert killed == [command]

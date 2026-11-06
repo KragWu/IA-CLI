@@ -582,3 +582,55 @@ def test_chat_reports_error_when_graph_produces_no_state(tmp_path, monkeypatch):
 
     assert any(line.startswith("erreur>") and "aucun état" in line for line in output)
     assert not any(line.startswith("\niacli>") for line in output)
+
+
+def test_ctrl_c_during_a_turn_cancels_only_that_turn(tmp_path):
+    class InterruptedModel(FakeChatModel):
+        def invoke(self, messages):
+            if not self.calls:
+                self.calls.append(messages)
+                raise KeyboardInterrupt
+            return super().invoke(messages)
+
+    model = InterruptedModel()
+    prompts = iter(["demande lente", "demande suivante", "/exit"])
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert any(line.startswith("erreur>") and "interrompu" in line for line in output)
+    assert any("Réponse 2" in line for line in output)
+    assert [
+        message.content for message in model.calls[1] if isinstance(message, HumanMessage)
+    ] == ["demande lente", "demande suivante"]
+    assert sum(line.startswith("temps total> demande") for line in output) == 2
+
+
+def test_ctrl_c_at_the_prompt_ends_the_session_cleanly(tmp_path):
+    def interrupted_input(_prompt):
+        raise KeyboardInterrupt
+
+    presenter = CliChatPresenter(
+        input_fn=interrupted_input,
+        output_fn=lambda _line: None,
+    )
+
+    run_chat(
+        FakeChatModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
