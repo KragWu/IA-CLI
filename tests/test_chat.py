@@ -453,3 +453,34 @@ def test_output_clears_spinner_line_before_printing_while_progress_is_running():
     assert written.count("outil> read_file") == 20
     assert written.count("\r\033[2Koutil> read_file") == 20
     assert written.count("\r\033[2Ktemps action> read_file") == 20
+
+
+def test_spinner_does_not_draw_while_an_output_line_is_being_printed():
+    log = []
+
+    class LoggingStream(TtyStringIO):
+        def write(self, text):
+            log.append(("spinner", text))
+            return super().write(text)
+
+    def slow_output(line):
+        log.append(("out-start", line))
+        time.sleep(0.35)
+        log.append(("out-end", line))
+
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: "",
+        output_fn=slow_output,
+        progress_stream=LoggingStream(),
+    )
+    presenter.start_progress()
+    time.sleep(0.15)
+    log.clear()
+
+    presenter.show_error("boom")
+    presenter.stop_progress()
+
+    kinds = [kind for kind, _text in log]
+    start = kinds.index("out-start")
+    end = kinds.index("out-end")
+    assert "spinner" not in kinds[start:end]

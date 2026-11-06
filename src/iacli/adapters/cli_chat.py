@@ -98,10 +98,13 @@ class CliChatPresenter:
                 message = self._progress_message
             elapsed = perf_counter() - self._progress_started_at
             duration = self._format_duration(elapsed)
-            self._progress_stream.write(
-                f"\r{frames[frame]} {message} ({duration})..."
-            )
-            self._progress_stream.flush()
+            with self._output_lock:
+                if self._progress_stop.is_set():
+                    break
+                self._progress_stream.write(
+                    f"\r{frames[frame]} {message} ({duration})..."
+                )
+                self._progress_stream.flush()
             frame = (frame + 1) % len(frames)
 
     def confirm_file_write(self, path: str, diff: str) -> bool:
