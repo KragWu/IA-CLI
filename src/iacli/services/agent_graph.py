@@ -25,7 +25,12 @@ AgentTimingCallback = Callable[[float], None]
 
 
 def format_tool_error(error: Exception) -> str:
-    """Texte d'erreur renvoyé au modèle pour qu'il puisse corriger son appel."""
+    """Texte d'erreur renvoyé au modèle pour qu'il puisse corriger son appel.
+
+    L'entrée standard fermée n'est pas une erreur de l'appel : elle est relancée
+    pour arrêter le tour, sinon le modèle réessaierait en boucle."""
+    if isinstance(error, EOFError):
+        raise error
     return f"Erreur de l'outil : {error}"
 
 

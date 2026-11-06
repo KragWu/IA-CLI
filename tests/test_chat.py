@@ -829,3 +829,44 @@ def test_presenter_prints_context_usage_and_warning():
     assert output[1].startswith("attention> ")
     assert "80 %" in output[1]
     assert "18 000" in output[1]
+
+
+def test_closed_input_during_confirmation_stops_the_turn_without_retry(tmp_path):
+    user_inputs = ["écris un fichier"]
+    output = []
+
+    def input_fn(prompt):
+        if prompt == "vous> " and user_inputs:
+            return user_inputs.pop(0)
+        raise EOFError
+
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "write_file",
+                        "args": {"path": "nouveau.txt", "content": "texte"},
+                        "id": "write-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Je réessaie."),
+        ]
+    )
+    presenter = CliChatPresenter(input_fn=input_fn, output_fn=output.append)
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert len(model.calls) == 1
+    assert not (tmp_path / "nouveau.txt").exists()
+    assert any(line.startswith("erreur>") and "fermée" in line for line in output)
