@@ -915,3 +915,17 @@ def test_progress_start_and_stop_are_safe_from_several_threads():
     time.sleep(0.3)
     assert errors == []
     assert threading.active_count() <= baseline
+
+
+def test_chat_context_usage_counts_a_json_text_tool_call_message(tmp_path):
+    (tmp_path / "notes.txt").write_text("contenu", encoding="utf-8")
+    json_tool_call = AIMessage(
+        content='{"name":"read_file","arguments":{"path":"notes.txt"}}',
+        usage_metadata=_usage(3000),
+    )
+
+    presenter = _run_with_usage(
+        tmp_path, [json_tool_call, AIMessage(content="Terminé.")]
+    )
+
+    assert presenter.usages == [(3000, 18000)]

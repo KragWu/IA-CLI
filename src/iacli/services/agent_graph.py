@@ -103,6 +103,8 @@ def build_control_graph(
             tool_calls=calls,
             id=response.id,
             response_metadata=response.response_metadata,
+            additional_kwargs=response.additional_kwargs,
+            usage_metadata=response.usage_metadata,
         )
 
     def agent(state: AgentState) -> dict[str, Any]:
