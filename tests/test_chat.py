@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
+from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.domain.config import ConfigurationState, OllamaSettings
 from iacli.services.chat import run_chat
 from tests.fakes import FakeChatModel
@@ -74,20 +75,57 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
     )
     monkeypatch.setattr(
         "iacli.cli.run_chat",
-        lambda *args: chat_calls.append(args),
+        lambda *args, **kwargs: chat_calls.append((args, kwargs)),
     )
 
     handle_chat(Namespace(config_dir=tmp_path))
 
     assert len(chat_calls) == 1
-    assert chat_calls[0][0] is model
-    assert chat_calls[0][1] == Path.cwd().resolve()
-    assert chat_calls[0][2:] == ("Mes instructions", "coder:latest")
+    args, kwargs = chat_calls[0]
+    assert args[0] is model
+    assert args[1] == Path.cwd().resolve()
+    assert args[2:] == ("Mes instructions", "coder:latest")
+    assert isinstance(kwargs["presenter"], CliChatPresenter)
+    assert kwargs["tools_factory"] is create_workspace_tools
     assert model_arguments == {
         "model": "coder:latest",
         "base_url": "http://ollama.test:11434",
         "temperature": 0,
     }
+
+
+def test_chat_builds_tools_through_injected_factory_with_presenter_callbacks(
+    tmp_path,
+):
+    created = []
+
+    def tools_factory(workspace, confirm_write, confirm_shell, on_timing):
+        created.append((workspace, confirm_write, confirm_shell, on_timing))
+        return []
+
+    prompts = iter(["/exit"])
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=lambda _line: None,
+    )
+
+    run_chat(
+        FakeChatModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=tools_factory,
+    )
+
+    assert created == [
+        (
+            tmp_path,
+            presenter.confirm_file_write,
+            presenter.confirm_shell_command,
+            presenter.show_action_timing,
+        )
+    ]
 
 
 def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
@@ -105,6 +143,7 @@ def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
         "Répondre en français.",
         "fake-model",
         presenter=presenter,
+        tools_factory=create_workspace_tools,
     )
 
     assert len(model.calls) == 2
@@ -162,7 +201,7 @@ def test_chat_reports_tool_progress(tmp_path):
 
     model = ToolCallingModel()
     presenter = RecordingPresenter()
-    run_chat(model, tmp_path, "", "fake-model", presenter=presenter)
+    run_chat(model, tmp_path, "", "fake-model", presenter=presenter, tools_factory=create_workspace_tools)
 
     assert "Appel des outils : read_file" in presenter.progress_updates
     assert any("Résultat de read_file reçu" in item for item in presenter.progress_updates)
@@ -196,6 +235,7 @@ def test_chat_reports_turn_error_and_continues_session(tmp_path):
         "Répondre en français.",
         "fake-model",
         presenter=presenter,
+        tools_factory=create_workspace_tools,
     )
 
     assert any(
@@ -247,7 +287,7 @@ def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
         output_fn=output.append,
     )
 
-    run_chat(model, tmp_path, "", "fake-model", presenter=presenter)
+    run_chat(model, tmp_path, "", "fake-model", presenter=presenter, tools_factory=create_workspace_tools)
 
     assert len(model.calls) == 2
     assert any("Voici les premières lignes des deux fichiers." in line for line in output)
@@ -262,7 +302,7 @@ def test_chat_exits_cleanly_on_end_of_input(tmp_path):
         output_fn=lambda _line: None,
     )
 
-    run_chat(FakeChatModel(), tmp_path, "", "fake-model", presenter=presenter)
+    run_chat(FakeChatModel(), tmp_path, "", "fake-model", presenter=presenter, tools_factory=create_workspace_tools)
 
 
 def test_progress_animation_displays_elapsed_time():

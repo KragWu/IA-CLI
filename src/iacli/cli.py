@@ -4,11 +4,13 @@ import argparse
 from pathlib import Path
 import sys
 
+from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter
 from iacli.domain.config import OllamaSettings
 from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
 from iacli.infrastructure.system import LocalSystemGateway
+from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.services.chat import run_chat
 from iacli.services.initialize import InitializeApplication
 from iacli.services.ports import OllamaGateway
@@ -59,7 +61,14 @@ def handle_chat(args: argparse.Namespace) -> None:
         base_url=configuration.ollama.base_url,
         temperature=0,
     )
-    run_chat(model, Path.cwd().resolve(), instructions, model_name)
+    run_chat(
+        model,
+        Path.cwd().resolve(),
+        instructions,
+        model_name,
+        presenter=CliChatPresenter(),
+        tools_factory=create_workspace_tools,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
