@@ -163,9 +163,11 @@ def create_workspace_tools(
         if not target.exists():
             raise FileNotFoundError(f"Chemin introuvable : {path}")
         files = [target] if target.is_file() else iter_files(target)
+        needle = query.casefold()
         matches = []
         skipped_large = 0
         skipped_binary = 0
+        truncated = False
         for file_path in files:
             if file_path.is_symlink():
                 continue
@@ -178,13 +180,16 @@ def create_workspace_tools(
                 skipped_binary += 1
                 continue
             for line_number, line in enumerate(lines, 1):
-                if query.casefold() in line.casefold():
+                if needle in line.casefold():
                     matches.append(
                         f"{file_path.relative_to(root).as_posix()}:{line_number}: {line}"
                     )
                     if len(matches) >= 100:
-                        matches.append("[résultats limités à 100 correspondances]")
-                        return "\n".join(matches)
+                        truncated = True
+                        break
+            if truncated:
+                matches.append("[résultats limités à 100 correspondances]")
+                break
         if skipped_large or skipped_binary:
             matches.append(
                 f"[fichiers ignorés : {skipped_large} trop volumineux, "

@@ -246,3 +246,14 @@ def test_workspace_walk_never_enters_ignored_directories(tmp_path, monkeypatch):
         for path in scanned
         for ignored in (".git", "node_modules", ".venv")
     )
+
+
+def test_search_reports_skipped_files_even_when_results_are_truncated(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"\xff\xfe\x00binaire")
+    (tmp_path / "b.txt").write_text("Hello\n" * 150, encoding="utf-8")
+    tools = create_tools(tmp_path)
+
+    result = tools["search_files"].invoke({"query": "hello"})
+
+    assert "[résultats limités à 100 correspondances]" in result
+    assert "[fichiers ignorés : 0 trop volumineux, 1 non UTF-8]" in result
