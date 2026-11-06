@@ -353,3 +353,40 @@ def test_ignored_directories_are_skipped_by_walks_but_explicit_files_stay_access
         tools["search_files"].invoke({"query": "hello", "path": ".git/config"})
         == ".git/config:1: secret hello"
     )
+
+
+def test_write_file_warns_before_converting_a_mixed_line_ending_file(tmp_path):
+    target = tmp_path / "mixte.txt"
+    target.write_bytes(b"un\r\ndeux\ntrois\r\n")
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    tools["write_file"].invoke(
+        {"path": "mixte.txt", "content": "un\ndeux\ntrois\nquatre\n"}
+    )
+
+    assert "fins de ligne mixtes" in diffs[0]
+    assert "2 CRLF" in diffs[0]
+    assert "1 LF" in diffs[0]
+    assert "CRLF" in diffs[0].splitlines()[0]
+    assert "+quatre" in diffs[0]
+    assert target.read_bytes() == b"un\r\ndeux\r\ntrois\r\nquatre\r\n"
+
+
+def test_write_file_does_not_warn_for_uniform_line_endings(tmp_path):
+    (tmp_path / "lf.txt").write_bytes(b"un\ndeux\n")
+    (tmp_path / "crlf.txt").write_bytes(b"un\r\ndeux\r\n")
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    tools["write_file"].invoke({"path": "lf.txt", "content": "un\ndeux\ntrois\n"})
+    tools["write_file"].invoke({"path": "crlf.txt", "content": "un\ndeux\ntrois\n"})
+
+    assert len(diffs) == 2
+    assert all("mixtes" not in diff for diff in diffs)
