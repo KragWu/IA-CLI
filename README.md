@@ -8,6 +8,14 @@ IA-CLI est une interface en ligne de commande pour utiliser des modèles d'IA op
 - Git
 - [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
 - [Ollama](https://ollama.com/) installé et démarré sur `http://localhost:11434`
+- Un modèle Ollama compatible avec les outils (*tool calling*) : `iacli chat` refuse de démarrer
+  avec un modèle qui n'annonce pas cette capacité.
+
+Les dépendances Python sont installées automatiquement avec `pip install .` :
+
+- [`langgraph`](https://github.com/langchain-ai/langgraph) construit le graphe agent/outils.
+- [`langchain-ollama`](https://github.com/langchain-ai/langchain) fournit `ChatOllama`, le client de chat
+  qui parle à l'instance Ollama.
 
 ## Installation depuis le dépôt
 
