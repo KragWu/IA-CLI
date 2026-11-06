@@ -95,6 +95,22 @@ class OllamaClient:
             if isinstance(model, dict) and isinstance(model.get("name"), str)
         }
 
+    def model_capabilities(self, model: str) -> set[str] | None:
+        request = Request(
+            f"{self.base_url}/api/show",
+            data=json.dumps({"model": model}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("La réponse Ollama /api/show est invalide.")
+        capabilities = payload.get("capabilities")
+        if not isinstance(capabilities, list):
+            return None
+        return {item for item in capabilities if isinstance(item, str)}
+
     def is_model_installed(self, model: str) -> bool:
         return model in self.installed_models()
 

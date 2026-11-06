@@ -3,6 +3,8 @@ from io import StringIO
 from pathlib import Path
 import time
 
+import pytest
+
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
@@ -47,6 +49,9 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
     class FakeGateway:
         def installed_models(self):
             return {"coder:latest"}
+
+        def model_capabilities(self, model):
+            return {"completion", "tools"}
 
     class FakeConfigGateway:
         def ensure_configuration(self, directory):
@@ -126,6 +131,59 @@ def test_chat_builds_tools_through_injected_factory_with_presenter_callbacks(
             presenter.show_action_timing,
         )
     ]
+
+
+def _handle_chat_with_capabilities(tmp_path, monkeypatch, capabilities):
+    (tmp_path / "IACLI.md").write_text("Mes instructions", encoding="utf-8")
+    settings = OllamaSettings(
+        "http://ollama.test:11434",
+        "https://registry.ollama.ai",
+        "coder:latest",
+    )
+    chat_calls = []
+
+    class FakeGateway:
+        def installed_models(self):
+            return {"coder:latest"}
+
+        def model_capabilities(self, model):
+            assert model == "coder:latest"
+            return capabilities
+
+    class FakeConfigGateway:
+        def ensure_configuration(self, directory):
+            return ConfigurationState(tmp_path, settings)
+
+    monkeypatch.setattr("iacli.cli.FileConfigurationGateway", FakeConfigGateway)
+    monkeypatch.setattr(
+        "iacli.cli.OllamaClientFactory.create", lambda _self, _settings: FakeGateway()
+    )
+    monkeypatch.setattr("langchain_ollama.ChatOllama", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        "iacli.cli.run_chat", lambda *args, **kwargs: chat_calls.append(args)
+    )
+
+    handle_chat(Namespace(config_dir=tmp_path))
+    return chat_calls
+
+
+def test_chat_handler_refuses_model_without_tool_support(tmp_path, monkeypatch):
+    with pytest.raises(RuntimeError, match="outils"):
+        _handle_chat_with_capabilities(tmp_path, monkeypatch, {"completion"})
+
+
+def test_chat_handler_starts_when_model_supports_tools(tmp_path, monkeypatch):
+    calls = _handle_chat_with_capabilities(
+        tmp_path, monkeypatch, {"completion", "tools"}
+    )
+
+    assert len(calls) == 1
+
+
+def test_chat_handler_starts_when_capabilities_are_unknown(tmp_path, monkeypatch):
+    calls = _handle_chat_with_capabilities(tmp_path, monkeypatch, None)
+
+    assert len(calls) == 1
 
 
 def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
