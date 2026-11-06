@@ -67,6 +67,7 @@ def handle_chat(args: argparse.Namespace) -> None:
         model=model_name,
         base_url=configuration.ollama.base_url,
         temperature=0,
+        num_ctx=configuration.ollama.num_ctx,
     )
     run_chat(
         model,
