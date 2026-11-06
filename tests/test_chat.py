@@ -382,7 +382,6 @@ def test_chat_reports_turn_error_and_continues_session(tmp_path):
     )
     assert any("Réponse 2" in line for line in output)
     assert [message.content for message in model.calls[1] if isinstance(message, HumanMessage)] == [
-        "demande en échec",
         "demande suivante",
     ]
     assert sum(line.startswith("temps total> demande") for line in output) == 2
@@ -693,7 +692,7 @@ def test_ctrl_c_during_a_turn_cancels_only_that_turn(tmp_path):
     assert any("Réponse 2" in line for line in output)
     assert [
         message.content for message in model.calls[1] if isinstance(message, HumanMessage)
-    ] == ["demande lente", "demande suivante"]
+    ] == ["demande suivante"]
     assert sum(line.startswith("temps total> demande") for line in output) == 2
 
 
@@ -870,3 +869,15 @@ def test_closed_input_during_confirmation_stops_the_turn_without_retry(tmp_path)
     assert len(model.calls) == 1
     assert not (tmp_path / "nouveau.txt").exists()
     assert any(line.startswith("erreur>") and "fermée" in line for line in output)
+
+
+def test_turn_with_empty_reply_and_no_tool_work_leaves_no_orphan_request(tmp_path):
+    model, output = _run_two_turns(
+        tmp_path, [AIMessage(content=""), AIMessage(content="Réponse finale.")]
+    )
+
+    history = model.calls[1]
+    assert [type(message) for message in history] == [SystemMessage, HumanMessage]
+    assert history[1].content == "seconde demande"
+    assert any(line.startswith("erreur>") for line in output)
+    assert any("Réponse finale." in line for line in output)
