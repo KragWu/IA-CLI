@@ -293,6 +293,49 @@ def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
     assert any("Voici les premières lignes des deux fichiers." in line for line in output)
 
 
+def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
+    (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("notes contents", encoding="utf-8")
+
+    class MultiToolCallingModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(
+                    content=(
+                        '{"name":"read_file","arguments":{"path":"README.md"}}\n'
+                        '{"name":"list_files","arguments":{"path":"."}}'
+                    )
+                )
+            return AIMessage(content="Terminé.")
+
+    class RecordingPresenter(CliChatPresenter):
+        def __init__(self):
+            prompts = iter(["Lis puis liste.", "/exit"])
+            super().__init__(
+                input_fn=lambda _prompt: next(prompts),
+                output_fn=lambda _line: None,
+            )
+            self.tool_results = []
+
+        def show_tool_result(self, name):
+            self.tool_results.append(name)
+            super().show_tool_result(name)
+
+    presenter = RecordingPresenter()
+
+    run_chat(
+        MultiToolCallingModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert presenter.tool_results == ["read_file", "list_files"]
+
+
 def test_chat_exits_cleanly_on_end_of_input(tmp_path):
     def end_input(_prompt):
         raise EOFError

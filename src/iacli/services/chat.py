@@ -93,6 +93,7 @@ def _run_turn(
     request_started: float,
 ) -> tuple[str, list[BaseMessage]]:
     result = None
+    seen_messages = len(messages) + 1
     try:
         for state in graph.stream(
             {"messages": [*messages, HumanMessage(content=user_input)]},
@@ -100,24 +101,9 @@ def _run_turn(
             stream_mode="values",
         ):
             result = state
-            latest_message = state["messages"][-1]
-            if isinstance(latest_message, AIMessage) and latest_message.tool_calls:
-                tool_names = ", ".join(
-                    tool_call["name"] for tool_call in latest_message.tool_calls
-                )
-                chat_presenter.update_progress(f"Appel des outils : {tool_names}")
-                for tool_call in latest_message.tool_calls:
-                    chat_presenter.show_tool_call(
-                        tool_call["name"],
-                        tool_call["args"],
-                    )
-            elif isinstance(latest_message, ToolMessage):
-                chat_presenter.update_progress(
-                    f"Résultat de {latest_message.name} reçu; l'agent poursuit"
-                )
-                chat_presenter.show_tool_result(latest_message.name)
-            elif isinstance(latest_message, AIMessage):
-                chat_presenter.update_progress("Préparation de la réponse")
+            for message in state["messages"][seen_messages:]:
+                _present_message(message, chat_presenter)
+            seen_messages = max(seen_messages, len(state["messages"]))
     finally:
         chat_presenter.stop_progress()
         chat_presenter.show_total_duration(perf_counter() - request_started)
@@ -129,3 +115,18 @@ def _run_turn(
     if not isinstance(response, str):
         raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
     return response, new_messages
+
+
+def _present_message(message: BaseMessage, chat_presenter: ChatPresenter) -> None:
+    if isinstance(message, AIMessage) and message.tool_calls:
+        tool_names = ", ".join(tool_call["name"] for tool_call in message.tool_calls)
+        chat_presenter.update_progress(f"Appel des outils : {tool_names}")
+        for tool_call in message.tool_calls:
+            chat_presenter.show_tool_call(tool_call["name"], tool_call["args"])
+    elif isinstance(message, ToolMessage):
+        chat_presenter.update_progress(
+            f"Résultat de {message.name} reçu; l'agent poursuit"
+        )
+        chat_presenter.show_tool_result(message.name)
+    elif isinstance(message, AIMessage):
+        chat_presenter.update_progress("Préparation de la réponse")
