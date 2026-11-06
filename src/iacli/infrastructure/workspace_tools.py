@@ -2,6 +2,7 @@
 
 import difflib
 from functools import wraps
+import locale
 import os
 import signal
 import subprocess
@@ -39,7 +40,27 @@ def _new_process_group_options() -> dict[str, object]:
     return {"start_new_session": True}
 
 
-def _kill_process_tree(process: subprocess.Popen[str]) -> None:
+def _console_encoding() -> str:
+    """Page de code des commandes shell : OEM sous Windows (cmd.exe), locale ailleurs."""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+        except (AttributeError, OSError):
+            pass
+    return locale.getpreferredencoding(False)
+
+
+def _decode_output(data: bytes) -> str:
+    """UTF-8 d'abord (git, rg, python -X utf8...), sinon la page de code de la console."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode(_console_encoding(), errors="replace")
+
+
+def _kill_process_tree(process: subprocess.Popen) -> None:
     """Kill a shell and every process it started, not only the shell itself."""
     if os.name == "nt":
         subprocess.run(
@@ -288,9 +309,6 @@ def create_workspace_tools(
             cwd=root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             **_new_process_group_options(),
         )
         try:
@@ -300,10 +318,10 @@ def create_workspace_tools(
             try:
                 stdout, stderr = process.communicate(timeout=KILL_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
-                stdout, stderr = "", ""
+                stdout, stderr = b"", b""
             return (
                 f"Commande interrompue après {MAX_TIME_FOR_SUBPROCESS} secondes.\n"
-                f"{stdout or ''}{stderr or ''}"
+                f"{_decode_output(stdout or b'')}{_decode_output(stderr or b'')}"
             )[:MAX_TOOL_OUTPUT_CHARS]
         except KeyboardInterrupt:
             # Ctrl+C annule le tour : ne pas laisser la commande tourner en arrière-plan.
@@ -311,7 +329,7 @@ def create_workspace_tools(
             raise
         output = (
             f"Code de sortie : {process.returncode}\n"
-            f"{stdout}{stderr}"
+            f"{_decode_output(stdout)}{_decode_output(stderr)}"
         )
         if len(output) > MAX_TOOL_OUTPUT_CHARS:
             output = output[:MAX_TOOL_OUTPUT_CHARS] + "\n[sortie tronquée]"

@@ -417,3 +417,38 @@ def test_write_file_does_not_warn_for_uniform_line_endings(tmp_path):
 
     assert len(diffs) == 2
     assert all("mixtes" not in diff for diff in diffs)
+
+
+def test_shell_output_decoding_prefers_utf8(monkeypatch):
+    monkeypatch.setattr(workspace_tools, "_console_encoding", lambda: "cp850")
+
+    assert workspace_tools._decode_output("café ✓".encode("utf-8")) == "café ✓"
+
+
+def test_shell_output_decoding_falls_back_to_the_console_code_page(monkeypatch):
+    monkeypatch.setattr(workspace_tools, "_console_encoding", lambda: "cp850")
+
+    assert workspace_tools._decode_output("répertoire".encode("cp850")) == "répertoire"
+
+
+def test_shell_output_decoding_replaces_undecodable_bytes(monkeypatch):
+    monkeypatch.setattr(workspace_tools, "_console_encoding", lambda: "ascii")
+
+    assert workspace_tools._decode_output(b"ok \xff") == "ok �"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="page de code OEM propre à Windows")
+def test_run_shell_decodes_output_written_in_the_console_code_page(tmp_path):
+    encoding = workspace_tools._console_encoding()
+    script = tmp_path / "emit.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.stdout.buffer.write('répertoire été'.encode('{encoding}'))\n",
+        encoding="utf-8",
+    )
+    tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
+
+    result = tools["run_shell"].invoke({"command": f'"{sys.executable}" emit.py'})
+
+    assert "répertoire été" in result
+    assert "�" not in result
