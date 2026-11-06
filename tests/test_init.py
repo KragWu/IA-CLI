@@ -6,6 +6,7 @@ import pytest
 
 from iacli.adapters.cli_presenter import CliPresenter
 from iacli.domain.config import OllamaSettings
+from iacli.domain.models import ModelInfo
 from iacli.domain.events import (
     DownloadProgress,
     InitializationEvent,
@@ -332,7 +333,7 @@ def test_registry_index_selects_the_current_platform_via_public_api(
     assert fake_urlopen.requests[1][0].full_url.endswith("sha256:windows")
 
 
-def test_ollama_model_capabilities_reads_api_show(fake_urlopen):
+def test_ollama_model_info_reads_api_show(fake_urlopen):
     client = OllamaClient(base_url="http://ollama.test:11434", urlopen=fake_urlopen)
     show_url = "http://ollama.test:11434/api/show"
     fake_urlopen.add_response(
@@ -340,8 +341,10 @@ def test_ollama_model_capabilities_reads_api_show(fake_urlopen):
     )
     fake_urlopen.add_response(show_url, b'{"details":{}}')
 
-    assert client.model_capabilities("coder:latest") == {"completion", "tools"}
-    assert client.model_capabilities("old:latest") is None
+    assert client.model_info("coder:latest") == ModelInfo(
+        capabilities=frozenset({"completion", "tools"})
+    )
+    assert client.model_info("old:latest") == ModelInfo()
 
     request = fake_urlopen.requests[0][0]
     assert request.get_method() == "POST"

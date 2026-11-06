@@ -54,7 +54,7 @@ def handle_chat(args: argparse.Namespace) -> None:
             f"Le modèle {model_name} n'est pas installé. Lancez d'abord `iacli init`."
         )
 
-    capabilities = ollama.model_capabilities(model_name)
+    capabilities = ollama.model_info(model_name).capabilities
     if capabilities is not None and "tools" not in capabilities:
         raise RuntimeError(
             f"Le modèle {model_name} ne gère pas les outils, indispensables au chat. "

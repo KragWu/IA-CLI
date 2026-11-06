@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool
 
 from iacli.domain.config import ConfigurationState, OllamaSettings
 from iacli.domain.events import DownloadProgress, InitializationEvent
+from iacli.domain.models import ModelInfo
 
 
 class ConfigurationGateway(Protocol):
@@ -23,8 +24,8 @@ class SystemGateway(Protocol):
 class OllamaGateway(Protocol):
     def installed_models(self) -> set[str]: ...
 
-    def model_capabilities(self, model: str) -> set[str] | None:
-        """Capacités annoncées par Ollama, ou None si le serveur ne les expose pas."""
+    def model_info(self, model: str) -> ModelInfo:
+        """Informations annoncées par Ollama ; les champs inconnus valent None."""
         ...
 
     def remote_model_size(self, model: str) -> int: ...
