@@ -408,7 +408,8 @@ def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
             ]
             assert [message.content for message in tool_messages] == [
                 "readme contents",
-                "cli contents",
+                "[Chemin demandé introuvable : cli.py ; "
+                "fichier lu : src/iacli/cli.py]\ncli contents",
             ]
             return AIMessage(content="Voici les premières lignes des deux fichiers.")
 

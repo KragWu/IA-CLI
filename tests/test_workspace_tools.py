@@ -64,7 +64,34 @@ def test_read_file_resolves_unique_filename_in_project(tmp_path):
     (source / "cli.py").write_text("cli source", encoding="utf-8")
     tools = create_tools(tmp_path)
 
-    assert tools["read_file"].invoke({"path": "cli.py"}) == "cli source"
+    assert tools["read_file"].invoke({"path": "cli.py"}) == (
+        "[Chemin demandé introuvable : cli.py ; fichier lu : src/iacli/cli.py]\n"
+        "cli source"
+    )
+
+
+def test_read_file_names_the_file_actually_read_after_a_wrong_directory(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "config.py").write_text("test config", encoding="utf-8")
+    tools = create_tools(tmp_path)
+
+    result = tools["read_file"].invoke({"path": "src/missing/config.py"})
+
+    assert result.startswith(
+        "[Chemin demandé introuvable : src/missing/config.py ; "
+        "fichier lu : tests/config.py]"
+    )
+    assert result.endswith("test config")
+
+
+def test_read_file_rejects_a_directory_instead_of_reading_a_same_name_file(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other" / "docs").write_text("not the directory", encoding="utf-8")
+    tools = create_tools(tmp_path)
+
+    with pytest.raises(IsADirectoryError, match="dossier"):
+        tools["read_file"].invoke({"path": "docs"})
 
 
 def test_read_file_rejects_ambiguous_filename_in_project(tmp_path):
