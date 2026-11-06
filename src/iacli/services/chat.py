@@ -1,6 +1,7 @@
 """Interactive chat use case backed by the LangGraph control flow."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from time import perf_counter
@@ -75,14 +76,23 @@ def run_chat(
             continue
         chat_presenter.start_progress()
         request_started = perf_counter()
-        try:
-            response, messages = _run_turn(
-                graph, messages, user_input, chat_presenter, request_started
-            )
-        except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
-            chat_presenter.show_error(str(error) or type(error).__name__)
+        outcome = _run_turn(
+            graph, messages, user_input, chat_presenter, request_started
+        )
+        messages = outcome.messages
+        if outcome.error is not None:
+            chat_presenter.show_error(str(outcome.error) or type(outcome.error).__name__)
             continue
-        chat_presenter.show_response(response)
+        chat_presenter.show_response(outcome.response)
+
+
+@dataclass
+class _TurnOutcome:
+    """Résultat d'un tour : l'historique à conserver et, selon le cas, la réponse ou l'erreur."""
+
+    messages: list[BaseMessage]
+    response: str = ""
+    error: Exception | None = None
 
 
 def _run_turn(
@@ -91,30 +101,48 @@ def _run_turn(
     user_input: str,
     chat_presenter: ChatPresenter,
     request_started: float,
-) -> tuple[str, list[BaseMessage]]:
-    result = None
+) -> _TurnOutcome:
+    turn_input = [*messages, HumanMessage(content=user_input)]
+    last_messages = turn_input
+    produced_state = False
     seen_messages = len(messages) + 1
     try:
-        for state in graph.stream(
-            {"messages": [*messages, HumanMessage(content=user_input)]},
-            config={"max_concurrency": 1},
-            stream_mode="values",
-        ):
-            result = state
-            for message in state["messages"][seen_messages:]:
-                _present_message(message, chat_presenter)
-            seen_messages = max(seen_messages, len(state["messages"]))
-    finally:
-        chat_presenter.stop_progress()
-        chat_presenter.show_total_duration(perf_counter() - request_started)
+        try:
+            for state in graph.stream(
+                {"messages": turn_input},
+                config={"max_concurrency": 1},
+                stream_mode="values",
+            ):
+                produced_state = True
+                last_messages = state["messages"]
+                for message in last_messages[seen_messages:]:
+                    _present_message(message, chat_presenter)
+                seen_messages = max(seen_messages, len(last_messages))
+        finally:
+            chat_presenter.stop_progress()
+            chat_presenter.show_total_duration(perf_counter() - request_started)
 
-    if result is None:
-        raise RuntimeError("Le graphe agent n'a produit aucun état.")
-    new_messages = result["messages"]
-    response = new_messages[-1].content
-    if not isinstance(response, str):
-        raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
-    return response, new_messages
+        if not produced_state:
+            raise RuntimeError("Le graphe agent n'a produit aucun état.")
+        response = last_messages[-1].content
+        if not isinstance(response, str):
+            raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
+    except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
+        return _TurnOutcome(_without_incomplete_tail(last_messages), error=error)
+    return _TurnOutcome(last_messages, response)
+
+
+def _without_incomplete_tail(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Retire la fin d'un tour en échec qui laisserait un historique invalide :
+    un appel d'outil sans résultat ou une réponse vide du modèle."""
+    kept = list(messages)
+    while (
+        kept
+        and isinstance(kept[-1], AIMessage)
+        and (kept[-1].tool_calls or not kept[-1].content)
+    ):
+        kept.pop()
+    return kept
 
 
 def _present_message(message: BaseMessage, chat_presenter: ChatPresenter) -> None:

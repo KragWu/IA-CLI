@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
@@ -301,9 +301,10 @@ def test_chat_reports_turn_error_and_continues_session(tmp_path):
         for line in output
     )
     assert any("Réponse 2" in line for line in output)
-    assert all(
-        message.content != "demande en échec" for message in model.calls[1]
-    )
+    assert [message.content for message in model.calls[1] if isinstance(message, HumanMessage)] == [
+        "demande en échec",
+        "demande suivante",
+    ]
     assert sum(line.startswith("temps total> demande") for line in output) == 2
 
 
@@ -484,3 +485,100 @@ def test_spinner_does_not_draw_while_an_output_line_is_being_printed():
     start = kinds.index("out-start")
     end = kinds.index("out-end")
     assert "spinner" not in kinds[start:end]
+
+
+def _run_two_turns(tmp_path, responses, monkeypatch=None, max_iterations=None):
+    (tmp_path / "notes.txt").write_text("contenu du projet", encoding="utf-8")
+    if max_iterations is not None:
+        monkeypatch.setattr("iacli.services.chat.MAX_TOOL_ITERATIONS", max_iterations)
+    model = FakeChatModel(responses)
+    prompts = iter(["première demande", "seconde demande", "/exit"])
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+    return model, output
+
+
+READ_NOTES = AIMessage(content='{"name":"read_file","arguments":{"path":"notes.txt"}}')
+
+
+def test_failed_turn_keeps_completed_tool_work_in_history(tmp_path):
+    model, output = _run_two_turns(
+        tmp_path,
+        [READ_NOTES, AIMessage(content=""), AIMessage(content="Réponse finale.")],
+    )
+
+    history = model.calls[2]
+    assert [type(message) for message in history] == [
+        SystemMessage,
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        HumanMessage,
+    ]
+    assert history[1].content == "première demande"
+    assert history[2].tool_calls[0]["name"] == "read_file"
+    assert history[3].content == "contenu du projet"
+    assert history[4].content == "seconde demande"
+    assert any(line.startswith("erreur>") for line in output)
+    assert any("Réponse finale." in line for line in output)
+
+
+def test_failed_turn_drops_tool_call_without_result_from_history(
+    tmp_path, monkeypatch
+):
+    model, output = _run_two_turns(
+        tmp_path,
+        [READ_NOTES, READ_NOTES, AIMessage(content="Réponse finale.")],
+        monkeypatch,
+        max_iterations=1,
+    )
+
+    history = model.calls[2]
+    assert [type(message) for message in history] == [
+        SystemMessage,
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        HumanMessage,
+    ]
+    assert any(line.startswith("erreur>") and "Limite" in line for line in output)
+
+
+def test_chat_reports_error_when_graph_produces_no_state(tmp_path, monkeypatch):
+    class EmptyGraph:
+        def stream(self, *_args, **_kwargs):
+            return iter(())
+
+    monkeypatch.setattr(
+        "iacli.services.chat.build_control_graph", lambda *_args, **_kwargs: EmptyGraph()
+    )
+    prompts = iter(["demande", "/exit"])
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        FakeChatModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert any(line.startswith("erreur>") and "aucun état" in line for line in output)
+    assert not any(line.startswith("\niacli>") for line in output)
