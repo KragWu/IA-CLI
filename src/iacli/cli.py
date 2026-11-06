@@ -85,6 +85,7 @@ def handle_chat(args: argparse.Namespace) -> None:
         model_name,
         presenter=CliChatPresenter(),
         tools_factory=create_workspace_tools,
+        context_limit=num_ctx,
     )
 
 

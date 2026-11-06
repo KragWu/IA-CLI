@@ -60,6 +60,9 @@ sorties des outils sont limitées à 30 000 caractères pour maîtriser la quant
 contenu injectée dans la conversation. Une recherche s'arrête après 100 correspondances
 et ajoute `[résultats limités à 100 correspondances]` comme indication de troncature,
 pas comme message d'erreur.
+Quand Ollama renvoie le nombre de tokens consommés, la CLI affiche aussi, après chaque tour,
+l'occupation de la fenêtre de contexte (`contexte> 4 500 / 18 000 tokens (25 %)`), calculée
+sur le dernier appel au modèle, et une alerte à partir de 80 %.
 Après chaque demande, la CLI affiche le temps de chaque appel au modèle et de chaque
 outil, puis le temps total du tour. Le message animé affiche aussi la durée écoulée
 pendant le traitement. Les durées sont présentées automatiquement en millisecondes,

@@ -12,6 +12,8 @@ from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
 
 MAX_TOOL_ITERATIONS = 25
+# Part de la fenêtre de contexte à partir de laquelle l'utilisateur est alerté.
+CONTEXT_WARNING_RATIO = 0.8
 
 
 def evaluate_response(state: AgentState) -> bool:
@@ -33,6 +35,7 @@ def run_chat(
     *,
     presenter: ChatPresenter,
     tools_factory: ToolsFactory,
+    context_limit: int | None = None,
 ) -> None:
     chat_presenter = presenter
     tools = tools_factory(
@@ -82,8 +85,12 @@ def run_chat(
         messages = outcome.messages
         if outcome.error is not None:
             chat_presenter.show_error(str(outcome.error) or type(outcome.error).__name__)
-            continue
-        chat_presenter.show_response(outcome.response)
+        else:
+            chat_presenter.show_response(outcome.response)
+        if context_limit is not None and outcome.context_tokens is not None:
+            chat_presenter.show_context_usage(outcome.context_tokens, context_limit)
+            if outcome.context_tokens >= context_limit * CONTEXT_WARNING_RATIO:
+                chat_presenter.show_context_warning(outcome.context_tokens, context_limit)
 
 
 @dataclass
@@ -93,6 +100,7 @@ class _TurnOutcome:
     messages: list[BaseMessage]
     response: str = ""
     error: Exception | None = None
+    context_tokens: int | None = None
 
 
 def _run_turn(
@@ -131,10 +139,28 @@ def _run_turn(
         return _TurnOutcome(
             _without_incomplete_tail(last_messages),
             error=RuntimeError("Tour interrompu par l'utilisateur."),
+            context_tokens=_context_tokens(last_messages, len(messages) + 1),
         )
     except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
-        return _TurnOutcome(_without_incomplete_tail(last_messages), error=error)
-    return _TurnOutcome(last_messages, response)
+        return _TurnOutcome(
+            _without_incomplete_tail(last_messages),
+            error=error,
+            context_tokens=_context_tokens(last_messages, len(messages) + 1),
+        )
+    return _TurnOutcome(
+        last_messages,
+        response,
+        context_tokens=_context_tokens(last_messages, len(messages) + 1),
+    )
+
+
+def _context_tokens(messages: list[BaseMessage], start: int) -> int | None:
+    """Tokens occupés après le dernier appel au modèle du tour (messages[start:]),
+    ou None si Ollama n'a rien renvoyé : la sortie sera rejouée au tour suivant."""
+    for message in reversed(messages[start:]):
+        if isinstance(message, AIMessage) and message.usage_metadata:
+            return message.usage_metadata["total_tokens"]
+    return None
 
 
 def _without_incomplete_tail(messages: list[BaseMessage]) -> list[BaseMessage]:
