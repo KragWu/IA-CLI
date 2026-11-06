@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import sys
 import time
 
@@ -217,3 +218,31 @@ def test_write_file_rejects_existing_file_that_is_not_utf8(tmp_path):
         tools["write_file"].invoke({"path": "latin.txt", "content": "autre\n"})
 
     assert target.read_bytes() == "caf\xe9\n".encode("latin-1")
+
+
+def test_workspace_walk_never_enters_ignored_directories(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("print('Hello')\n", encoding="utf-8")
+    for ignored in (".git", "node_modules", ".venv"):
+        (tmp_path / ignored / "deep").mkdir(parents=True)
+        (tmp_path / ignored / "deep" / "lib.js").write_text("Hello", encoding="utf-8")
+    scanned = []
+    real_scandir = os.scandir
+
+    def spy_scandir(path="."):
+        scanned.append(os.fspath(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", spy_scandir)
+    tools = create_tools(tmp_path)
+
+    listing = tools["list_files"].invoke({"path": "."})
+    search = tools["search_files"].invoke({"query": "hello"})
+
+    assert listing == "src/app.py"
+    assert "src/app.py:1" in search
+    assert not any(
+        ignored in Path(path).parts
+        for path in scanned
+        for ignored in (".git", "node_modules", ".venv")
+    )

@@ -94,14 +94,17 @@ def create_workspace_tools(
         return candidate
 
     def iter_files(directory: Path) -> Iterator[Path]:
-        for path in directory.rglob("*"):
-            relative = path.relative_to(root)
-            if any(part in IGNORED_DIRECTORIES for part in relative.parts):
-                continue
-            if path.is_symlink():
-                continue
-            if path.is_file():
-                yield path
+        if any(part in IGNORED_DIRECTORIES for part in directory.relative_to(root).parts):
+            return
+        for current, dirnames, filenames in os.walk(directory):
+            # Prune in place so ignored trees (.git, node_modules...) are never read.
+            dirnames[:] = sorted(
+                name for name in dirnames if name not in IGNORED_DIRECTORIES
+            )
+            for name in sorted(filenames):
+                path = Path(current) / name
+                if not path.is_symlink() and path.is_file():
+                    yield path
 
     @tool
     @measure_action("read_file")
