@@ -7,9 +7,8 @@ from time import perf_counter
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
-from iacli.adapters.cli_chat import CliChatPresenter
-from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.services.agent_graph import AgentState, build_control_graph
+from iacli.services.ports import ChatPresenter, ToolsFactory
 
 MAX_TOOL_ITERATIONS = 25
 
@@ -31,10 +30,11 @@ def run_chat(
     instructions: str,
     model_name: str,
     *,
-    presenter: CliChatPresenter | None = None,
+    presenter: ChatPresenter,
+    tools_factory: ToolsFactory,
 ) -> None:
-    chat_presenter = presenter or CliChatPresenter()
-    tools = create_workspace_tools(
+    chat_presenter = presenter
+    tools = tools_factory(
         workspace,
         chat_presenter.confirm_file_write,
         chat_presenter.confirm_shell_command,
@@ -89,7 +89,7 @@ def _run_turn(
     graph: Any,
     messages: list[BaseMessage],
     user_input: str,
-    chat_presenter: CliChatPresenter,
+    chat_presenter: ChatPresenter,
     request_started: float,
 ) -> tuple[str, list[BaseMessage]]:
     result = None
