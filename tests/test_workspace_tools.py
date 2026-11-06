@@ -521,3 +521,59 @@ def test_run_shell_command_reading_stdin_gets_end_of_input_immediately(
     assert "Code de sortie : 0" in result
     assert "''" in result
     assert time.perf_counter() - started < 8
+
+
+def _run_script(tmp_path, source, monkeypatch=None, timeout=None):
+    if timeout is not None:
+        monkeypatch.setattr(workspace_tools, "MAX_TIME_FOR_SUBPROCESS", timeout)
+    (tmp_path / "emit.py").write_text(source, encoding="utf-8")
+    tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
+    return tools["run_shell"].invoke({"command": f'"{sys.executable}" emit.py'})
+
+
+def test_run_shell_keeps_stderr_when_stdout_alone_exceeds_the_limit(tmp_path):
+    result = _run_script(
+        tmp_path,
+        "import sys\n"
+        "sys.stdout.write('x' * 40000)\n"
+        "sys.stderr.write('Traceback: boom')\n"
+        "sys.exit(1)\n",
+    )
+
+    assert result.startswith("Code de sortie : 1")
+    assert "Traceback: boom" in result
+    assert "[sortie tronquée]" in result
+    assert len(result) <= workspace_tools.MAX_TOOL_OUTPUT_CHARS
+
+
+def test_run_shell_shares_the_limit_between_stdout_and_stderr(tmp_path):
+    result = _run_script(
+        tmp_path,
+        "import sys\n"
+        "sys.stdout.write('o' * 40000)\n"
+        "sys.stderr.write('e' * 40000)\n",
+    )
+
+    assert result.count("[sortie tronquée]") == 2
+    assert result.count("o") > 10_000
+    assert result.count("e") > 10_000
+    assert len(result) <= workspace_tools.MAX_TOOL_OUTPUT_CHARS
+
+
+def test_run_shell_timeout_keeps_stderr_and_marks_truncation(tmp_path, monkeypatch):
+    result = _run_script(
+        tmp_path,
+        "import sys, time\n"
+        "sys.stdout.write('x' * 40000)\n"
+        "sys.stderr.write('Traceback: boom')\n"
+        "sys.stdout.flush()\n"
+        "sys.stderr.flush()\n"
+        "time.sleep(30)\n",
+        monkeypatch,
+        timeout=2,
+    )
+
+    assert "interrompue après 2 secondes" in result
+    assert "Traceback: boom" in result
+    assert "[sortie tronquée]" in result
+    assert len(result) <= workspace_tools.MAX_TOOL_OUTPUT_CHARS
