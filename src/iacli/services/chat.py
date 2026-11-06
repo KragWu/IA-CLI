@@ -136,28 +136,22 @@ def _run_turn(
         if not isinstance(response, str):
             raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
     except KeyboardInterrupt:
-        return _TurnOutcome(
-            _without_incomplete_tail(last_messages),
-            error=RuntimeError("Tour interrompu par l'utilisateur."),
-            context_tokens=_context_tokens(last_messages, len(messages) + 1),
-        )
+        failure: Exception | None = RuntimeError("Tour interrompu par l'utilisateur.")
     except EOFError:
-        return _TurnOutcome(
-            _without_incomplete_tail(last_messages),
-            error=RuntimeError("L'entrée standard a été fermée pendant le tour."),
-            context_tokens=_context_tokens(last_messages, len(messages) + 1),
-        )
+        failure = RuntimeError("L'entrée standard a été fermée pendant le tour.")
     except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
+        failure = error
+    else:
+        failure = None
+
+    context_tokens = _context_tokens(last_messages, len(messages) + 1)
+    if failure is not None:
         return _TurnOutcome(
             _without_incomplete_tail(last_messages),
-            error=error,
-            context_tokens=_context_tokens(last_messages, len(messages) + 1),
+            error=failure,
+            context_tokens=context_tokens,
         )
-    return _TurnOutcome(
-        last_messages,
-        response,
-        context_tokens=_context_tokens(last_messages, len(messages) + 1),
-    )
+    return _TurnOutcome(last_messages, response, context_tokens=context_tokens)
 
 
 def _context_tokens(messages: list[BaseMessage], start: int) -> int | None:
