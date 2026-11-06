@@ -1,6 +1,7 @@
 from argparse import Namespace
 from io import StringIO
 from pathlib import Path
+import threading
 import time
 
 import pytest
@@ -882,3 +883,35 @@ def test_turn_with_empty_reply_and_no_tool_work_leaves_no_orphan_request(tmp_pat
     assert history[1].content == "seconde demande"
     assert any(line.startswith("erreur>") for line in output)
     assert any("Réponse finale." in line for line in output)
+
+
+def test_progress_start_and_stop_are_safe_from_several_threads():
+    baseline = threading.active_count()
+    errors = []
+
+    for _ in range(5):
+        presenter = CliChatPresenter(
+            input_fn=lambda _prompt: "",
+            output_fn=lambda _line: None,
+            progress_stream=TtyStringIO(),
+        )
+        presenter.start_progress()
+
+        def worker():
+            try:
+                for _ in range(40):
+                    presenter.stop_progress()
+                    presenter.resume_progress()
+            except Exception as error:  # noqa: BLE001
+                errors.append(error)
+
+        workers = [threading.Thread(target=worker) for _ in range(6)]
+        for thread in workers:
+            thread.start()
+        for thread in workers:
+            thread.join()
+        presenter.stop_progress()
+
+    time.sleep(0.3)
+    assert errors == []
+    assert threading.active_count() <= baseline
