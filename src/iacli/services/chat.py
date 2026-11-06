@@ -147,7 +147,7 @@ def _run_turn(
     context_tokens = _context_tokens(last_messages, len(messages) + 1)
     if failure is not None:
         return _TurnOutcome(
-            _without_incomplete_tail(last_messages),
+            _without_incomplete_tail(last_messages, turn_start=len(messages)),
             error=failure,
             context_tokens=context_tokens,
         )
@@ -163,15 +163,21 @@ def _context_tokens(messages: list[BaseMessage], start: int) -> int | None:
     return None
 
 
-def _without_incomplete_tail(messages: list[BaseMessage]) -> list[BaseMessage]:
+def _without_incomplete_tail(
+    messages: list[BaseMessage], turn_start: int
+) -> list[BaseMessage]:
     """Retire la fin d'un tour en échec qui laisserait un historique invalide :
-    un appel d'outil sans résultat ou une réponse vide du modèle."""
+    un appel d'outil sans résultat ou une réponse vide du modèle. Si le tour n'a
+    rien produit de plus que la demande (index turn_start), celle-ci est retirée
+    aussi : elle resterait sans réponse et précéderait la demande suivante."""
     kept = list(messages)
     while (
         kept
         and isinstance(kept[-1], AIMessage)
         and (kept[-1].tool_calls or not kept[-1].content)
     ):
+        kept.pop()
+    if len(kept) == turn_start + 1:
         kept.pop()
     return kept
 
