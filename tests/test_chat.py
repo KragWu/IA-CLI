@@ -11,6 +11,7 @@ from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
 from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.domain.config import ConfigurationState, OllamaSettings
+from iacli.domain.models import ModelInfo
 from iacli.services.chat import run_chat
 from tests.fakes import FakeChatModel
 
@@ -50,8 +51,8 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
         def installed_models(self):
             return {"coder:latest"}
 
-        def model_capabilities(self, model):
-            return {"completion", "tools"}
+        def model_info(self, model):
+            return ModelInfo(capabilities=frozenset({"completion", "tools"}))
 
     class FakeConfigGateway:
         def ensure_configuration(self, directory):
@@ -146,9 +147,11 @@ def _handle_chat_with_capabilities(tmp_path, monkeypatch, capabilities):
         def installed_models(self):
             return {"coder:latest"}
 
-        def model_capabilities(self, model):
+        def model_info(self, model):
             assert model == "coder:latest"
-            return capabilities
+            return ModelInfo(
+                capabilities=None if capabilities is None else frozenset(capabilities)
+            )
 
     class FakeConfigGateway:
         def ensure_configuration(self, directory):

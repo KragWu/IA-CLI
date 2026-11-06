@@ -7,6 +7,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen as _urlopen
 
 from iacli.domain.events import DownloadProgress
+from iacli.domain.models import ModelInfo
 
 
 class OllamaClient:
@@ -95,7 +96,7 @@ class OllamaClient:
             if isinstance(model, dict) and isinstance(model.get("name"), str)
         }
 
-    def model_capabilities(self, model: str) -> set[str] | None:
+    def model_info(self, model: str) -> ModelInfo:
         request = Request(
             f"{self.base_url}/api/show",
             data=json.dumps({"model": model}).encode("utf-8"),
@@ -107,9 +108,13 @@ class OllamaClient:
         if not isinstance(payload, dict):
             raise ValueError("La réponse Ollama /api/show est invalide.")
         capabilities = payload.get("capabilities")
-        if not isinstance(capabilities, list):
-            return None
-        return {item for item in capabilities if isinstance(item, str)}
+        return ModelInfo(
+            capabilities=(
+                frozenset(item for item in capabilities if isinstance(item, str))
+                if isinstance(capabilities, list)
+                else None
+            )
+        )
 
     def is_model_installed(self, model: str) -> bool:
         return model in self.installed_models()
