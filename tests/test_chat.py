@@ -330,3 +330,25 @@ def test_duration_formatter_uses_milliseconds_seconds_minutes_and_hours():
     assert format_duration(251) == "4 min 11 s"
     assert format_duration(3600) == "1 h 00 min 00 s"
     assert format_duration(3661) == "1 h 01 min 01 s"
+
+
+def test_output_clears_spinner_line_before_printing_while_progress_is_running():
+    stream = TtyStringIO()
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: "",
+        output_fn=lambda line: stream.write(f"{line}\n"),
+        progress_stream=stream,
+    )
+
+    presenter.start_progress()
+    time.sleep(0.15)
+    for _ in range(20):
+        presenter.show_tool_call("read_file", {"path": "a.py"})
+        presenter.show_action_timing("read_file", 0.01)
+        time.sleep(0.01)
+    presenter.stop_progress()
+
+    written = stream.getvalue()
+    assert written.count("outil> read_file") == 20
+    assert written.count("\r\033[2Koutil> read_file") == 20
+    assert written.count("\r\033[2Ktemps action> read_file") == 20

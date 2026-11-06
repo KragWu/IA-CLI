@@ -4,7 +4,7 @@ from collections.abc import Callable
 import json
 from pathlib import Path
 import sys
-from threading import Event, Lock, Thread
+from threading import Event, Lock, RLock, Thread
 from time import perf_counter
 from typing import TextIO
 
@@ -21,40 +21,48 @@ class CliChatPresenter:
         self._progress_stream = progress_stream
         self._progress_stop = Event()
         self._progress_lock = Lock()
+        self._output_lock = RLock()
         self._progress_message = ""
         self._progress_started_at = 0.0
         self._progress_thread: Thread | None = None
 
+    def _emit(self, line: str) -> None:
+        with self._output_lock:
+            if self._progress_thread is not None:
+                self._progress_stream.write("\r\033[2K")
+                self._progress_stream.flush()
+            self._output(line)
+
     def start(self, workspace: Path, model: str) -> None:
-        self._output(f"IA-CLI — modèle {model} — projet {workspace}")
-        self._output("Entrez /exit ou /quit pour terminer.")
+        self._emit(f"IA-CLI — modèle {model} — projet {workspace}")
+        self._emit("Entrez /exit ou /quit pour terminer.")
 
     def prompt(self) -> str:
         return self._input("vous> ")
 
     def show_response(self, response: str) -> None:
-        self._output(f"\niacli> {response}\n")
+        self._emit(f"\niacli> {response}\n")
 
     def show_error(self, message: str) -> None:
-        self._output(f"erreur> {message}")
+        self._emit(f"erreur> {message}")
 
     def show_tool_call(self, name: str, arguments: dict[str, object]) -> None:
         serialized_arguments = json.dumps(arguments, ensure_ascii=False)
-        self._output(f"outil> {name}({serialized_arguments})")
+        self._emit(f"outil> {name}({serialized_arguments})")
 
     def show_tool_result(self, name: str) -> None:
-        self._output(f"outil terminé> {name}")
+        self._emit(f"outil terminé> {name}")
 
     def show_action_timing(self, action: str, seconds: float) -> None:
-        self._output(f"temps action> {action} : {self._format_duration(seconds)}")
+        self._emit(f"temps action> {action} : {self._format_duration(seconds)}")
 
     def show_total_duration(self, seconds: float) -> None:
-        self._output(f"temps total> demande : {self._format_duration(seconds)}")
+        self._emit(f"temps total> demande : {self._format_duration(seconds)}")
 
     def start_progress(self) -> None:
         self._progress_message = "L'agent traite votre demande"
         self._progress_started_at = perf_counter()
-        self._output(f"{self._progress_message}...")
+        self._emit(f"{self._progress_message}...")
         self._resume_progress()
 
     def resume_progress(self) -> None:
@@ -98,8 +106,8 @@ class CliChatPresenter:
 
     def confirm_file_write(self, path: str, diff: str) -> bool:
         self.stop_progress()
-        self._output(f"Modification proposée pour {path} :")
-        self._output(diff)
+        self._emit(f"Modification proposée pour {path} :")
+        self._emit(diff)
         try:
             return self._confirm("Appliquer cette modification ? [o/N] ")
         finally:
@@ -107,7 +115,7 @@ class CliChatPresenter:
 
     def confirm_shell_command(self, command: str, workspace: Path) -> bool:
         self.stop_progress()
-        self._output(f"Commande proposée dans {workspace} : {command}")
+        self._emit(f"Commande proposée dans {workspace} : {command}")
         try:
             return self._confirm("Exécuter cette commande ? [o/N] ")
         finally:
