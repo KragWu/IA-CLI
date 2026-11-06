@@ -89,6 +89,9 @@ class CliPresenter:
     def report_interruption(self) -> None:
         self._error_output("[iacli] Opération annulée par l'utilisateur.")
 
+    def report_warning(self, message: str) -> None:
+        self._error_output(f"[iacli] Avertissement : {message}")
+
     def report_error(self, error: Exception) -> None:
         self._error_output(f"[iacli] Erreur : {error}")
 

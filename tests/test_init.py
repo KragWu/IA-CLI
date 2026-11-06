@@ -390,3 +390,60 @@ num_ctx = {invalid}
 
     assert any("num_ctx" in warning for warning in state.warnings)
     assert state.ollama.num_ctx == 18000
+
+
+def test_ollama_model_info_reads_context_length_of_the_model_architecture(fake_urlopen):
+    client = OllamaClient(base_url="http://ollama.test:11434", urlopen=fake_urlopen)
+    show_url = "http://ollama.test:11434/api/show"
+    body = {
+        "capabilities": ["completion", "tools"],
+        "model_info": {
+            "general.architecture": "qwen2",
+            "qwen2.block_count": 28,
+            "qwen2.context_length": 32768,
+        },
+    }
+    fake_urlopen.add_response(show_url, json.dumps(body).encode())
+
+    info = client.model_info("coder:latest")
+
+    assert info.context_length == 32768
+    assert info.capabilities == frozenset({"completion", "tools"})
+
+
+def test_ollama_model_info_finds_context_length_without_architecture_key(fake_urlopen):
+    client = OllamaClient(base_url="http://ollama.test:11434", urlopen=fake_urlopen)
+    show_url = "http://ollama.test:11434/api/show"
+    fake_urlopen.add_response(
+        show_url, json.dumps({"model_info": {"llama.context_length": 8192}}).encode()
+    )
+
+    assert client.model_info("llama:latest").context_length == 8192
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"model_info": {}},
+        {"model_info": {"qwen2.context_length": "grand"}},
+        {"model_info": {"qwen2.context_length": 0}},
+        {"model_info": {"qwen2.context_length": True}},
+        {"model_info": "invalide"},
+    ],
+)
+def test_ollama_model_info_reports_unknown_context_length(fake_urlopen, body):
+    client = OllamaClient(base_url="http://ollama.test:11434", urlopen=fake_urlopen)
+    fake_urlopen.add_response(
+        "http://ollama.test:11434/api/show", json.dumps(body).encode()
+    )
+
+    assert client.model_info("x:latest").context_length is None
+
+
+def test_cli_presenter_reports_warning_on_error_output():
+    errors = []
+
+    CliPresenter(error_output_fn=errors.append).report_warning("valeur ajustée")
+
+    assert errors == ["[iacli] Avertissement : valeur ajustée"]

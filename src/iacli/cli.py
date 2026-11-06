@@ -54,11 +54,20 @@ def handle_chat(args: argparse.Namespace) -> None:
             f"Le modèle {model_name} n'est pas installé. Lancez d'abord `iacli init`."
         )
 
-    capabilities = ollama.model_info(model_name).capabilities
+    model_info = ollama.model_info(model_name)
+    capabilities = model_info.capabilities
     if capabilities is not None and "tools" not in capabilities:
         raise RuntimeError(
             f"Le modèle {model_name} ne gère pas les outils, indispensables au chat. "
             "Choisissez un modèle compatible dans config.toml puis lancez `iacli init`."
+        )
+
+    requested_num_ctx = configuration.ollama.num_ctx
+    num_ctx = model_info.limit_context(requested_num_ctx)
+    if num_ctx != requested_num_ctx:
+        CliPresenter().report_warning(
+            f"num_ctx ({requested_num_ctx}) dépasse le contexte maximal "
+            f"du modèle {model_name} ({num_ctx}) ; {num_ctx} sera utilisé."
         )
 
     instructions_path = configuration.directory / "IACLI.md"
@@ -67,7 +76,7 @@ def handle_chat(args: argparse.Namespace) -> None:
         model=model_name,
         base_url=configuration.ollama.base_url,
         temperature=0,
-        num_ctx=configuration.ollama.num_ctx,
+        num_ctx=num_ctx,
     )
     run_chat(
         model,

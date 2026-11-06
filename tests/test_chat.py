@@ -136,12 +136,21 @@ def test_chat_builds_tools_through_injected_factory_with_presenter_callbacks(
     ]
 
 
-def _handle_chat_with_capabilities(tmp_path, monkeypatch, capabilities):
+def _handle_chat_with_capabilities(
+    tmp_path,
+    monkeypatch,
+    capabilities,
+    *,
+    context_length=None,
+    num_ctx=18000,
+    model_arguments=None,
+):
     (tmp_path / "IACLI.md").write_text("Mes instructions", encoding="utf-8")
     settings = OllamaSettings(
         "http://ollama.test:11434",
         "https://registry.ollama.ai",
         "coder:latest",
+        num_ctx=num_ctx,
     )
     chat_calls = []
 
@@ -152,18 +161,24 @@ def _handle_chat_with_capabilities(tmp_path, monkeypatch, capabilities):
         def model_info(self, model):
             assert model == "coder:latest"
             return ModelInfo(
-                capabilities=None if capabilities is None else frozenset(capabilities)
+                capabilities=None if capabilities is None else frozenset(capabilities),
+                context_length=context_length,
             )
 
     class FakeConfigGateway:
         def ensure_configuration(self, directory):
             return ConfigurationState(tmp_path, settings)
 
+    def create_chat_model(**kwargs):
+        if model_arguments is not None:
+            model_arguments.update(kwargs)
+        return object()
+
     monkeypatch.setattr("iacli.cli.FileConfigurationGateway", FakeConfigGateway)
     monkeypatch.setattr(
         "iacli.cli.OllamaClientFactory.create", lambda _self, _settings: FakeGateway()
     )
-    monkeypatch.setattr("langchain_ollama.ChatOllama", lambda **_kwargs: object())
+    monkeypatch.setattr("langchain_ollama.ChatOllama", create_chat_model)
     monkeypatch.setattr(
         "iacli.cli.run_chat", lambda *args, **kwargs: chat_calls.append(args)
     )
@@ -189,6 +204,58 @@ def test_chat_handler_starts_when_capabilities_are_unknown(tmp_path, monkeypatch
     calls = _handle_chat_with_capabilities(tmp_path, monkeypatch, None)
 
     assert len(calls) == 1
+
+
+def test_chat_handler_caps_num_ctx_to_the_model_context_length(
+    tmp_path, monkeypatch, capsys
+):
+    arguments = {}
+
+    _handle_chat_with_capabilities(
+        tmp_path,
+        monkeypatch,
+        {"tools"},
+        context_length=8192,
+        num_ctx=18000,
+        model_arguments=arguments,
+    )
+
+    assert arguments["num_ctx"] == 8192
+    warning = capsys.readouterr().err
+    assert warning.startswith("[iacli] Avertissement :")
+    assert "18000" in warning
+    assert "8192" in warning
+
+
+def test_chat_handler_keeps_num_ctx_when_within_the_model_context_length(
+    tmp_path, monkeypatch, capsys
+):
+    arguments = {}
+
+    _handle_chat_with_capabilities(
+        tmp_path,
+        monkeypatch,
+        {"tools"},
+        context_length=32768,
+        num_ctx=18000,
+        model_arguments=arguments,
+    )
+
+    assert arguments["num_ctx"] == 18000
+    assert capsys.readouterr().err == ""
+
+
+def test_chat_handler_keeps_num_ctx_when_model_context_length_is_unknown(
+    tmp_path, monkeypatch, capsys
+):
+    arguments = {}
+
+    _handle_chat_with_capabilities(
+        tmp_path, monkeypatch, {"tools"}, num_ctx=18000, model_arguments=arguments
+    )
+
+    assert arguments["num_ctx"] == 18000
+    assert capsys.readouterr().err == ""
 
 
 def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
