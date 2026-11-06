@@ -91,6 +91,22 @@ def test_write_file_requires_confirmation_and_shows_diff(tmp_path):
     assert "+print('safe')" in previews[0][1]
 
 
+def test_write_file_refuses_when_diff_is_too_large_to_be_shown_in_full(tmp_path):
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    result = tools["write_file"].invoke(
+        {"path": "big.txt", "content": "ligne de contenu\n" * 5_000}
+    )
+
+    assert "trop volumineuse" in result
+    assert confirmations == []
+    assert not (tmp_path / "big.txt").exists()
+
+
 def test_confirmed_write_creates_file_in_project(tmp_path):
     tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
 

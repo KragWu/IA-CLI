@@ -190,9 +190,14 @@ def create_workspace_tools(
         )
         if not diff:
             return "Aucune modification : le fichier contient déjà ce texte."
-        if len(diff) > MAX_TOOL_OUTPUT_CHARS:
-            diff = diff[:MAX_TOOL_OUTPUT_CHARS] + "\n[aperçu du diff tronqué]"
         relative_path = file_path.relative_to(root).as_posix()
+        if len(diff) > MAX_TOOL_OUTPUT_CHARS:
+            return (
+                f"Modification refusée : la modification de {relative_path} est trop "
+                f"volumineuse pour être affichée en entier ({len(diff)} caractères, "
+                f"maximum {MAX_TOOL_OUTPUT_CHARS}). Découpez-la en plusieurs "
+                "modifications plus petites."
+            )
         if not confirm_file_write(relative_path, diff):
             return f"Modification refusée par l'utilisateur : {relative_path}"
 
