@@ -94,6 +94,7 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
     assert args[2:] == ("Mes instructions", "coder:latest")
     assert isinstance(kwargs["presenter"], CliChatPresenter)
     assert kwargs["tools_factory"] is create_workspace_tools
+    assert kwargs["context_limit"] == 8192
     assert model_arguments == {
         "model": "coder:latest",
         "base_url": "http://ollama.test:11434",
@@ -144,6 +145,7 @@ def _handle_chat_with_capabilities(
     context_length=None,
     num_ctx=18000,
     model_arguments=None,
+    chat_kwargs=None,
 ):
     (tmp_path / "IACLI.md").write_text("Mes instructions", encoding="utf-8")
     settings = OllamaSettings(
@@ -179,9 +181,12 @@ def _handle_chat_with_capabilities(
         "iacli.cli.OllamaClientFactory.create", lambda _self, _settings: FakeGateway()
     )
     monkeypatch.setattr("langchain_ollama.ChatOllama", create_chat_model)
-    monkeypatch.setattr(
-        "iacli.cli.run_chat", lambda *args, **kwargs: chat_calls.append(args)
-    )
+    def fake_run_chat(*args, **kwargs):
+        chat_calls.append(args)
+        if chat_kwargs is not None:
+            chat_kwargs.update(kwargs)
+
+    monkeypatch.setattr("iacli.cli.run_chat", fake_run_chat)
 
     handle_chat(Namespace(config_dir=tmp_path))
     return chat_calls
@@ -210,6 +215,7 @@ def test_chat_handler_caps_num_ctx_to_the_model_context_length(
     tmp_path, monkeypatch, capsys
 ):
     arguments = {}
+    chat_kwargs = {}
 
     _handle_chat_with_capabilities(
         tmp_path,
@@ -218,9 +224,11 @@ def test_chat_handler_caps_num_ctx_to_the_model_context_length(
         context_length=8192,
         num_ctx=18000,
         model_arguments=arguments,
+        chat_kwargs=chat_kwargs,
     )
 
     assert arguments["num_ctx"] == 8192
+    assert chat_kwargs["context_limit"] == 8192
     warning = capsys.readouterr().err
     assert warning.startswith("[iacli] Avertissement :")
     assert "18000" in warning
@@ -706,3 +714,118 @@ def test_ctrl_c_at_the_prompt_ends_the_session_cleanly(tmp_path):
         presenter=presenter,
         tools_factory=create_workspace_tools,
     )
+
+
+def _usage(total):
+    return {"input_tokens": total - 100, "output_tokens": 100, "total_tokens": total}
+
+
+class ContextRecordingPresenter(CliChatPresenter):
+    def __init__(self, prompts):
+        iterator = iter(prompts)
+        super().__init__(
+            input_fn=lambda _prompt: next(iterator),
+            output_fn=lambda _line: None,
+        )
+        self.usages = []
+        self.warnings = []
+
+    def show_context_usage(self, used, limit):
+        self.usages.append((used, limit))
+
+    def show_context_warning(self, used, limit):
+        self.warnings.append((used, limit))
+
+
+def _run_with_usage(tmp_path, responses, *, context_limit=18000):
+    presenter = ContextRecordingPresenter(["demande", "/exit"])
+    run_chat(
+        FakeChatModel(responses),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+        context_limit=context_limit,
+    )
+    return presenter
+
+
+def test_chat_reports_context_usage_after_a_turn(tmp_path):
+    presenter = _run_with_usage(
+        tmp_path, [AIMessage(content="Réponse.", usage_metadata=_usage(4500))]
+    )
+
+    assert presenter.usages == [(4500, 18000)]
+    assert presenter.warnings == []
+
+
+def test_chat_warns_when_context_reaches_80_percent(tmp_path):
+    presenter = _run_with_usage(
+        tmp_path, [AIMessage(content="Réponse.", usage_metadata=_usage(14400))]
+    )
+
+    assert presenter.usages == [(14400, 18000)]
+    assert presenter.warnings == [(14400, 18000)]
+
+
+def test_chat_does_not_warn_just_below_80_percent(tmp_path):
+    presenter = _run_with_usage(
+        tmp_path, [AIMessage(content="Réponse.", usage_metadata=_usage(14399))]
+    )
+
+    assert presenter.warnings == []
+
+
+def test_chat_uses_usage_of_the_last_model_call_of_the_turn(tmp_path):
+    (tmp_path / "notes.txt").write_text("contenu", encoding="utf-8")
+    tool_call = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "read_file",
+                "args": {"path": "notes.txt"},
+                "id": "read-1",
+                "type": "tool_call",
+            }
+        ],
+        usage_metadata=_usage(3000),
+    )
+
+    presenter = _run_with_usage(
+        tmp_path, [tool_call, AIMessage(content="Fini.", usage_metadata=_usage(5000))]
+    )
+
+    assert presenter.usages == [(5000, 18000)]
+
+
+def test_chat_reports_nothing_when_usage_is_unknown(tmp_path):
+    presenter = _run_with_usage(tmp_path, [AIMessage(content="Réponse.")])
+
+    assert presenter.usages == []
+    assert presenter.warnings == []
+
+
+def test_chat_reports_nothing_without_a_context_limit(tmp_path):
+    presenter = _run_with_usage(
+        tmp_path,
+        [AIMessage(content="Réponse.", usage_metadata=_usage(4500))],
+        context_limit=None,
+    )
+
+    assert presenter.usages == []
+
+
+def test_presenter_prints_context_usage_and_warning():
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: "", output_fn=output.append
+    )
+
+    presenter.show_context_usage(4500, 18000)
+    presenter.show_context_warning(14400, 18000)
+
+    assert output[0] == "contexte> 4 500 / 18 000 tokens (25 %)"
+    assert output[1].startswith("attention> ")
+    assert "80 %" in output[1]
+    assert "18 000" in output[1]

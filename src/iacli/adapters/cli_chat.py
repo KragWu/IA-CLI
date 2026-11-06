@@ -59,6 +59,23 @@ class CliChatPresenter:
     def show_total_duration(self, seconds: float) -> None:
         self._emit(f"temps total> demande : {self._format_duration(seconds)}")
 
+    def show_context_usage(self, used: int, limit: int) -> None:
+        self._emit(
+            f"contexte> {self._format_tokens(used)} / {self._format_tokens(limit)} "
+            f"tokens ({round(100 * used / limit)} %)"
+        )
+
+    def show_context_warning(self, used: int, limit: int) -> None:
+        self._emit(
+            f"attention> contexte utilisé à {round(100 * used / limit)} % : au-delà de "
+            f"{self._format_tokens(limit)} tokens, Ollama peut tronquer les plus "
+            "anciens messages de la conversation."
+        )
+
+    @staticmethod
+    def _format_tokens(count: int) -> str:
+        return f"{count:,}".replace(",", " ")
+
     def start_progress(self) -> None:
         self._progress_message = "L'agent traite votre demande"
         self._progress_started_at = perf_counter()
