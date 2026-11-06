@@ -174,6 +174,41 @@ def test_chat_reports_tool_progress(tmp_path):
     ]
 
 
+def test_chat_reports_turn_error_and_continues_session(tmp_path):
+    class FlakyModel(FakeChatModel):
+        def invoke(self, messages):
+            if not self.calls:
+                self.calls.append(messages)
+                raise ConnectionError("Ollama est injoignable")
+            return super().invoke(messages)
+
+    model = FlakyModel()
+    prompts = iter(["demande en échec", "demande suivante", "/exit"])
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "Répondre en français.",
+        "fake-model",
+        presenter=presenter,
+    )
+
+    assert any(
+        line.startswith("erreur>") and "Ollama est injoignable" in line
+        for line in output
+    )
+    assert any("Réponse 2" in line for line in output)
+    assert all(
+        message.content != "demande en échec" for message in model.calls[1]
+    )
+    assert sum(line.startswith("temps total> demande") for line in output) == 2
+
+
 def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
     (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
     source_file = tmp_path / "src" / "iacli"

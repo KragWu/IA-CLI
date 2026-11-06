@@ -35,6 +35,9 @@ class CliChatPresenter:
     def show_response(self, response: str) -> None:
         self._output(f"\niacli> {response}\n")
 
+    def show_error(self, message: str) -> None:
+        self._output(f"erreur> {message}")
+
     def show_tool_call(self, name: str, arguments: dict[str, object]) -> None:
         serialized_arguments = json.dumps(arguments, ensure_ascii=False)
         self._output(f"outil> {name}({serialized_arguments})")
