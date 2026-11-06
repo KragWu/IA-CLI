@@ -37,6 +37,38 @@ def test_chat_command_routes_to_chat_handler():
     assert str(args.config_dir) == "config"
 
 
+def test_default_command_accepts_config_dir():
+    args = build_parser().parse_args(["--config-dir", "config"])
+
+    assert args.func is handle_chat
+    assert args.config_dir == Path("config")
+
+
+def test_config_dir_given_before_a_subcommand_is_kept():
+    parser = build_parser()
+
+    chat_args = parser.parse_args(["--config-dir", "avant", "chat"])
+    init_args = parser.parse_args(["--config-dir", "avant", "init"])
+
+    assert chat_args.func is handle_chat
+    assert chat_args.config_dir == Path("avant")
+    assert init_args.config_dir == Path("avant")
+
+
+def test_config_dir_after_the_subcommand_wins_over_the_global_one():
+    args = build_parser().parse_args(
+        ["--config-dir", "avant", "chat", "--config-dir", "apres"]
+    )
+
+    assert args.config_dir == Path("apres")
+
+
+def test_init_command_still_accepts_config_dir():
+    args = build_parser().parse_args(["init", "--config-dir", "config"])
+
+    assert args.config_dir == Path("config")
+
+
 def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypatch):
     (tmp_path / "IACLI.md").write_text("Mes instructions", encoding="utf-8")
     settings = OllamaSettings(

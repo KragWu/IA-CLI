@@ -102,7 +102,13 @@ def build_parser() -> argparse.ArgumentParser:
         prog="iacli",
         description="CLI locale pour les IA open source"
     )
-    parser.set_defaults(func=handle_chat, config_dir=None)
+    parser.set_defaults(func=handle_chat)
+    parser.add_argument(
+        "--config-dir",
+        type=Path,
+        default=None,
+        help="Chemin optionnel vers le dossier de configuration",
+    )
     commands = parser.add_subparsers(dest="command")
 
     init_parser = commands.add_parser(
@@ -112,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--config-dir",
         type=Path,
-        default=None,
+        default=argparse.SUPPRESS,
         help="Chemin optionnel vers le dossier de configuration"
     )
     init_parser.set_defaults(func=handle_init)
@@ -124,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument(
         "--config-dir",
         type=Path,
-        default=None,
+        default=argparse.SUPPRESS,
         help="Chemin optionnel vers le dossier de configuration",
     )
     chat_parser.set_defaults(func=handle_chat)
