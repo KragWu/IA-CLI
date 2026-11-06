@@ -328,3 +328,28 @@ def test_write_file_reports_no_modification_for_existing_empty_file(tmp_path):
     result = tools["write_file"].invoke({"path": "empty.txt", "content": ""})
 
     assert result.startswith("Aucune modification")
+
+
+def test_ignored_directories_are_skipped_by_walks_but_explicit_files_stay_accessible(
+    tmp_path,
+):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("secret hello\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("hello\n", encoding="utf-8")
+    tools = create_tools(tmp_path)
+
+    # Parcours de dossiers : les dossiers ignorés sont filtrés.
+    assert tools["list_files"].invoke({"path": ".git"}) == "Aucun fichier trouvé."
+    assert (
+        tools["search_files"].invoke({"query": "hello", "path": ".git"})
+        == "Aucune correspondance."
+    )
+    assert tools["search_files"].invoke({"query": "hello"}) == "src/app.py:1: hello"
+
+    # Fichier désigné explicitement : accessible, de la même façon pour lire et chercher.
+    assert tools["read_file"].invoke({"path": ".git/config"}) == "secret hello\n"
+    assert (
+        tools["search_files"].invoke({"query": "hello", "path": ".git/config"})
+        == ".git/config:1: secret hello"
+    )
