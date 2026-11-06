@@ -113,8 +113,27 @@ class OllamaClient:
                 frozenset(item for item in capabilities if isinstance(item, str))
                 if isinstance(capabilities, list)
                 else None
-            )
+            ),
+            context_length=self._context_length(payload),
         )
+
+    @staticmethod
+    def _context_length(payload: dict) -> int | None:
+        model_info = payload.get("model_info")
+        if not isinstance(model_info, dict):
+            return None
+        architecture = model_info.get("general.architecture")
+        keys = [f"{architecture}.context_length"] if isinstance(architecture, str) else []
+        keys += sorted(
+            key
+            for key in model_info
+            if isinstance(key, str) and key.endswith(".context_length")
+        )
+        for key in keys:
+            value = model_info.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+        return None
 
     def is_model_installed(self, model: str) -> bool:
         return model in self.installed_models()
