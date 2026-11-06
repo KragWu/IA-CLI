@@ -24,6 +24,11 @@ Evaluator = Callable[[AgentState], object]
 AgentTimingCallback = Callable[[float], None]
 
 
+def format_tool_error(error: Exception) -> str:
+    """Texte d'erreur renvoyé au modèle pour qu'il puisse corriger son appel."""
+    return f"Erreur de l'outil : {error}"
+
+
 class MaxToolIterationsError(RuntimeError):
     """Raised when the agent requests another tool after reaching its limit."""
 
@@ -41,7 +46,7 @@ def build_control_graph(
         raise ValueError("max_iterations doit être supérieur ou égal à 1.")
 
     agent_model = model.bind_tools(tools)
-    action_node = ToolNode(tools)
+    action_node = ToolNode(tools, handle_tool_errors=format_tool_error)
     tool_names = {tool.name for tool in tools}
 
     def normalize_text_tool_call(response: Any) -> Any:

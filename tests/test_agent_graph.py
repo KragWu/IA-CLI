@@ -168,3 +168,40 @@ def test_max_iterations_safety():
         graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
 
     assert len(model.calls) == 3
+
+
+@tool
+def failing_tool(path: str) -> str:
+    """Always fail with a domain error."""
+    raise FileNotFoundError(f"Fichier introuvable : {path}")
+
+
+def test_tool_exception_is_returned_to_the_model_instead_of_aborting():
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "failing_tool",
+                        "args": {"path": "absent.md"},
+                        "id": "fail-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Le fichier n'existe pas."),
+        ]
+    )
+    graph = build_control_graph(model, [failing_tool], lambda _state: "verified")
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis absent.md")]})
+
+    tool_message = next(
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    )
+    assert tool_message.tool_call_id == "fail-1"
+    assert tool_message.status == "error"
+    assert "Fichier introuvable : absent.md" in tool_message.content
+    assert model.calls[1][-1] == tool_message
+    assert result["messages"][-1].content == "Le fichier n'existe pas."
