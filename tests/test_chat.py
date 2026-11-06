@@ -1,3 +1,4 @@
+import codecs
 from argparse import Namespace
 from io import StringIO
 from pathlib import Path
@@ -147,8 +148,9 @@ def _handle_chat_with_capabilities(
     num_ctx=18000,
     model_arguments=None,
     chat_kwargs=None,
+    instructions_bytes="Mes instructions".encode("utf-8"),
 ):
-    (tmp_path / "IACLI.md").write_text("Mes instructions", encoding="utf-8")
+    (tmp_path / "IACLI.md").write_bytes(instructions_bytes)
     settings = OllamaSettings(
         "http://ollama.test:11434",
         "https://registry.ollama.ai",
@@ -210,6 +212,36 @@ def test_chat_handler_starts_when_capabilities_are_unknown(tmp_path, monkeypatch
     calls = _handle_chat_with_capabilities(tmp_path, monkeypatch, None)
 
     assert len(calls) == 1
+
+
+def test_chat_handler_accepts_instructions_saved_with_a_utf8_bom(tmp_path, monkeypatch):
+    calls = _handle_chat_with_capabilities(
+        tmp_path,
+        monkeypatch,
+        {"tools"},
+        instructions_bytes=codecs.BOM_UTF8 + "Mes instructions".encode("utf-8"),
+    )
+
+    assert calls[0][2] == "Mes instructions"
+
+
+@pytest.mark.parametrize(
+    "instructions_bytes",
+    ["café".encode("cp1252"), "Mes instructions".encode("utf-16")],
+    ids=["ansi-cp1252", "utf-16"],
+)
+def test_chat_handler_reports_instructions_that_are_not_utf8(
+    tmp_path, monkeypatch, instructions_bytes
+):
+    with pytest.raises(ValueError, match="IACLI.md") as error:
+        _handle_chat_with_capabilities(
+            tmp_path,
+            monkeypatch,
+            {"tools"},
+            instructions_bytes=instructions_bytes,
+        )
+
+    assert "UTF-8" in str(error.value)
 
 
 def test_chat_handler_caps_num_ctx_to_the_model_context_length(

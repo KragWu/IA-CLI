@@ -71,7 +71,14 @@ def handle_chat(args: argparse.Namespace) -> None:
         )
 
     instructions_path = configuration.directory / "IACLI.md"
-    instructions = instructions_path.read_text(encoding="utf-8")
+    try:
+        # utf-8-sig : le Bloc-notes ajoute un BOM aux fichiers UTF-8.
+        instructions = instructions_path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            f"{instructions_path} n'est pas encodé en UTF-8. "
+            "Enregistrez-le en UTF-8 puis relancez iacli."
+        ) from error
     model = ChatOllama(
         model=model_name,
         base_url=configuration.ollama.base_url,
