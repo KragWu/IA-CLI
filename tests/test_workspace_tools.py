@@ -295,3 +295,36 @@ def test_interrupted_shell_command_kills_its_process_tree(tmp_path, monkeypatch)
         tools["run_shell"].invoke({"command": command})
 
     assert killed == [command]
+
+
+def test_write_file_creates_new_empty_file_after_confirmation(tmp_path):
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    result = tools["write_file"].invoke({"path": "pkg/__init__.py", "content": ""})
+
+    assert result == "Fichier enregistré : pkg/__init__.py"
+    assert (tmp_path / "pkg" / "__init__.py").read_bytes() == b""
+    assert "pkg/__init__.py" in diffs[0]
+    assert "vide" in diffs[0]
+
+
+def test_write_file_does_not_create_empty_file_when_user_refuses(tmp_path):
+    tools = create_tools(tmp_path)
+
+    result = tools["write_file"].invoke({"path": "pkg/__init__.py", "content": ""})
+
+    assert "refusée" in result
+    assert not (tmp_path / "pkg").exists()
+
+
+def test_write_file_reports_no_modification_for_existing_empty_file(tmp_path):
+    (tmp_path / "empty.txt").write_bytes(b"")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    result = tools["write_file"].invoke({"path": "empty.txt", "content": ""})
+
+    assert result.startswith("Aucune modification")

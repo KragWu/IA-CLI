@@ -235,9 +235,11 @@ def create_workspace_tools(
                 tofile=f"b/{file_path.relative_to(root).as_posix()}",
             )
         )
-        if not diff:
-            return "Aucune modification : le fichier contient déjà ce texte."
         relative_path = file_path.relative_to(root).as_posix()
+        if not diff and file_path.exists():
+            return "Aucune modification : le fichier contient déjà ce texte."
+        if not diff:
+            diff = f"Création du fichier vide : {relative_path}\n"
         if len(diff) > MAX_TOOL_OUTPUT_CHARS:
             return (
                 f"Modification refusée : la modification de {relative_path} est trop "
