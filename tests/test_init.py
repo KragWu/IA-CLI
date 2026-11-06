@@ -330,3 +330,19 @@ def test_registry_index_selects_the_current_platform_via_public_api(
 
     assert client.remote_model_size("model:tag") == 3
     assert fake_urlopen.requests[1][0].full_url.endswith("sha256:windows")
+
+
+def test_ollama_model_capabilities_reads_api_show(fake_urlopen):
+    client = OllamaClient(base_url="http://ollama.test:11434", urlopen=fake_urlopen)
+    show_url = "http://ollama.test:11434/api/show"
+    fake_urlopen.add_response(
+        show_url, b'{"capabilities":["completion","tools"],"details":{}}'
+    )
+    fake_urlopen.add_response(show_url, b'{"details":{}}')
+
+    assert client.model_capabilities("coder:latest") == {"completion", "tools"}
+    assert client.model_capabilities("old:latest") is None
+
+    request = fake_urlopen.requests[0][0]
+    assert request.get_method() == "POST"
+    assert json.loads(request.data) == {"model": "coder:latest"}
