@@ -15,7 +15,10 @@ IA-CLI (`iacli`) est une CLI Python (>= 3.11) pour discuter avec un modèle open
 
 ```bash
 python -m pip install .            # installe la commande `iacli` (pas de mode editable documenté)
-python -m pip install ".[dev]"       # pytest + pytest-cov + ruff + mypy
+python -m pip install ".[dev]"     # pytest, pytest-cov, ruff, mypy, import-linter, pre-commit
+scripts/check.sh                   # TOUTES les vérifications locales (ruff, format, mypy, lint-imports, pytest --cov)
+scripts/check.sh --audit           # idem + audit des vulnérabilités des dépendances (réseau requis)
+scripts/audit.sh                   # audit seul : venv jetable, pip-audit sur les seules dépendances du projet
 python -m ruff check .             # lint (ajouter --fix pour les corrections sûres)
 python -m ruff format .            # formatage
 python -m mypy                     # typage (src)
@@ -28,7 +31,7 @@ iacli init                         # wizard : crée ~/.config/iacli/{config.toml
 iacli / iacli chat                 # conversation (chat est la commande par défaut)
 ```
 
-Ruff (lint + format) et mypy sont configurés dans `pyproject.toml` ; il n'y a pas de build configuré. Prérequis runtime : Git, ripgrep (`rg`) et Ollama sur `http://localhost:11434`.
+Ruff (lint + format), mypy, import-linter et coverage sont configurés dans `pyproject.toml` ; il n'y a pas de build configuré. Les scripts `scripts/*.sh` se lancent avec Bash (Git Bash sous Windows). **Lancer `scripts/check.sh` avant de commiter.** `scripts/audit.sh` installe le projet dans un venv jetable pour auditer uniquement ses dépendances (auditer le Python global remonterait des paquets sans rapport). La CI GitHub (`.github/workflows/ci.yml`) est volontairement en déclenchement manuel (`workflow_dispatch`) car les minutes sont facturées ; Dependabot reste actif. Prérequis runtime : Git, ripgrep (`rg`) et Ollama sur `http://localhost:11434`.
 
 ## Architecture
 

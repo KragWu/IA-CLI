@@ -213,10 +213,19 @@ produisent un avertissement, pas une erreur fatale.
 
 ## Développement
 
-### Tests
+### Vérifications locales
+
+Les vérifications se lancent en local avec Bash (Git Bash sous Windows) :
 
 ```bash
-python -m pip install ".[dev]"                   # pytest + pytest-cov + ruff + mypy
+python -m pip install ".[dev]"       # pytest, pytest-cov, ruff, mypy, import-linter, pre-commit
+scripts/check.sh                     # lint, formatage, typage, contrats d'architecture, tests + couverture
+scripts/check.sh --audit             # idem + audit des dépendances (réseau requis)
+```
+
+Les outils peuvent aussi être lancés un par un :
+
+```bash
 python -m ruff check .                             # lint
 python -m ruff format .                            # formatage
 python -m mypy                                     # typage
@@ -226,6 +235,23 @@ pre-commit install && pre-commit install --hook-type pre-push   # hooks git
 python -m pytest                                   # toute la suite
 python -m pytest tests/test_chat.py::nom_du_test   # un seul test
 ```
+
+### Audit des dépendances
+
+```bash
+scripts/audit.sh
+```
+
+Le script installe le projet dans un environnement virtuel jetable, fige ses dépendances puis les passe à
+[`pip-audit`](https://pypi.org/project/pip-audit/) pour détecter les vulnérabilités connues. Lancer `pip-audit` directement
+audite à la place tout votre Python global, et signale des paquets sans rapport avec le projet. Le script nécessite un
+accès réseau et se termine en erreur si une vulnérabilité est trouvée. Dependabot propose par ailleurs les mises à jour
+hebdomadaires des dépendances.
+
+### Intégration continue
+
+Le workflow GitHub Actions (`.github/workflows/ci.yml`) ne se déclenche que manuellement (onglet *Actions* →
+*Run workflow*), car les minutes d'exécution sont facturées. `scripts/check.sh` fait la même chose en local.
 
 Les tests utilisent des fakes (`tests/fakes.py`, `tests/conftest.py`) plutôt que la vraie CLI ou Ollama. Le projet est
 développé en TDD : tout comportement nouveau ou corrigé commence par un test qui échoue.
