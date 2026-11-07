@@ -20,6 +20,7 @@ python -m ruff check .             # lint (ajouter --fix pour les corrections s�
 python -m ruff format .            # formatage
 python -m mypy                     # typage (src)
 python -m pytest --cov             # couverture (seuil 80 %)
+pre-commit install --install-hooks && pre-commit install --hook-type pre-push   # hooks git (ruff + mypy au commit, pytest au push)
 python -m pytest                   # toute la suite (pythonpath = src via pyproject.toml)
 python -m pytest tests/test_chat.py::nom_du_test   # un seul test
 iacli init                         # wizard : crée ~/.config/iacli/{config.toml,IACLI.md}, télécharge le modèle
