@@ -48,7 +48,7 @@ def _new_process_group_options() -> dict[str, Any]:
     """Options de `Popen` pour isoler la commande dans son propre groupe de processus,
     afin de pouvoir tuer toute sa descendance."""
     if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
     return {"start_new_session": True}
 
 
@@ -58,7 +58,7 @@ def _console_encoding() -> str:
         try:
             import ctypes
 
-            return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+            return f"cp{ctypes.windll.kernel32.GetOEMCP()}"  # type: ignore[attr-defined]
         except (AttributeError, OSError):
             pass
     return locale.getpreferredencoding(False)
