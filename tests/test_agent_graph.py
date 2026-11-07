@@ -121,6 +121,46 @@ def test_graph_routes_multiple_json_text_tool_calls():
     assert result["messages"][-1].content == "Voici les premières lignes des deux fichiers."
 
 
+def test_graph_routes_json_tool_call_in_a_fenced_block_surrounded_by_prose():
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content=(
+                    "Voici le code :\n```java\nclass A {}\n```\n"
+                    "Vous pouvez utiliser l'outil `read_file` :\n"
+                    '```json\n{"name": "read_file", "arguments": {"path": "A.java"}}\n```\n'
+                    "Dites-moi si vous voulez continuer !"
+                )
+            ),
+            AIMessage(content="Fichier lu."),
+        ]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis A.java")]})
+
+    tool_messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
+    assert [message.content for message in tool_messages] == ["contents of A.java"]
+    assert result["messages"][-1].content == "Fichier lu."
+
+
+def test_graph_ignores_fenced_json_that_is_not_a_known_tool_call():
+    content = (
+        "Exemple de configuration :\n"
+        '```json\n{"name": "inconnu", "arguments": {"path": "A.java"}}\n```\n'
+        '```json\n{"port": 8080}\n```'
+    )
+    model = FakeChatModel([AIMessage(content=content)])
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Montre un exemple")]})
+
+    assert not any(isinstance(message, ToolMessage) for message in result["messages"])
+    assert result["messages"][-1].content == content
+
+
 def test_graph_completion():
     model = FakeChatModel([AIMessage(content="La réponse est complète.")])
     graph = build_control_graph(

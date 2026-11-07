@@ -358,6 +358,31 @@ def test_chat_runs_multiple_turns_and_exits_cleanly(tmp_path):
     assert sum(line.startswith("temps total> demande") for line in output) == 2
 
 
+def test_system_prompt_lists_every_tool_and_forbids_denying_capabilities(tmp_path):
+    model = FakeChatModel()
+    prompts = iter(["bonjour", "/exit"])
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=lambda _line: None,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "Répondre en français.",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    system_prompt = model.calls[0][0].content
+    for tool_name in ("read_file", "list_files", "search_files", "write_file", "run_shell"):
+        assert tool_name in system_prompt
+    assert "ne dis jamais que tu ne peux pas" in system_prompt
+    assert "ne colle pas de code dans le chat" in system_prompt
+    assert "Répondre en français." in system_prompt
+
+
 def test_chat_reports_tool_progress(tmp_path):
     (tmp_path / "notes.txt").write_text("contenu du projet", encoding="utf-8")
 

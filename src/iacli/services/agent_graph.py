@@ -1,6 +1,7 @@
 """LangGraph orchestration for an injectable tool-calling agent."""
 
 import json
+import re
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, TypedDict
 from uuid import uuid4
@@ -19,6 +20,9 @@ class AgentState(TypedDict, total=False):
     evaluation: object
     error: str
 
+
+# Bloc de code markdown ```json ... ``` glissé par un petit modèle dans sa prose.
+_JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 Evaluator = Callable[[AgentState], object]
 AgentTimingCallback = Callable[[float], None]
@@ -54,30 +58,26 @@ def build_control_graph(
     action_node = ToolNode(tools, handle_tool_errors=format_tool_error)
     tool_names = {tool.name for tool in tools}
 
-    def normalize_text_tool_call(response: Any) -> Any:
-        if not isinstance(response, AIMessage) or response.tool_calls:
-            return response
-        if not isinstance(response.content, str):
-            return response
+    def parse_tool_calls(text: str) -> list[dict[str, Any]] | None:
+        """Return tool calls if `text` is only JSON objects naming known tools."""
         decoder = json.JSONDecoder()
-        content = response.content
         position = 0
         payloads = []
-        while position < len(content):
-            while position < len(content) and content[position].isspace():
+        while position < len(text):
+            while position < len(text) and text[position].isspace():
                 position += 1
-            if position == len(content):
+            if position == len(text):
                 break
             try:
-                payload, position = decoder.raw_decode(content, position)
+                payload, position = decoder.raw_decode(text, position)
             except json.JSONDecodeError:
-                return response
+                return None
             if not isinstance(payload, dict):
-                return response
+                return None
             payloads.append(payload)
 
         if not payloads:
-            return response
+            return None
 
         calls = []
         for payload in payloads:
@@ -88,7 +88,7 @@ def build_control_graph(
                 or name not in tool_names
                 or not isinstance(arguments, dict)
             ):
-                return response
+                return None
             calls.append(
                 {
                     "name": name,
@@ -97,6 +97,25 @@ def build_control_graph(
                     "type": "tool_call",
                 }
             )
+        return calls
+
+    def normalize_text_tool_call(response: Any) -> Any:
+        if not isinstance(response, AIMessage) or response.tool_calls:
+            return response
+        if not isinstance(response.content, str):
+            return response
+        content = response.content
+        calls = parse_tool_calls(content)
+        if calls is None:
+            blocks = _JSON_FENCE.findall(content)
+            if not blocks:
+                return response
+            calls = []
+            for block in blocks:
+                block_calls = parse_tool_calls(block)
+                if block_calls is None:
+                    return response
+                calls.extend(block_calls)
 
         return AIMessage(
             content="",
