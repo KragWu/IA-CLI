@@ -27,6 +27,7 @@ where = ["src"]
 dev = [
     "mypy",
     "pytest",
+    "pytest-cov",
     "ruff",
 ]
 
@@ -55,6 +56,15 @@ ignore = ["E501"]  # longueur gérée par `ruff format`
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
+
+[tool.coverage.run]
+source = ["iacli"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
 
 [tool.mypy]
 python_version = "3.11"

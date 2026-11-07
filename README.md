@@ -216,10 +216,11 @@ produisent un avertissement, pas une erreur fatale.
 ### Tests
 
 ```bash
-python -m pip install ".[dev]"                   # pytest + ruff + mypy
+python -m pip install ".[dev]"                   # pytest + pytest-cov + ruff + mypy
 python -m ruff check .                             # lint
 python -m ruff format .                            # formatage
 python -m mypy                                     # typage
+python -m pytest --cov                             # couverture (seuil 80 %)
 python -m pytest                                   # toute la suite
 python -m pytest tests/test_chat.py::nom_du_test   # un seul test
 ```
