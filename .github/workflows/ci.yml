@@ -29,6 +29,8 @@ jobs:
         run: python -m ruff format --check .
       - name: Typage
         run: python -m mypy
+      - name: Contrats d'architecture
+        run: lint-imports
       - name: Tests et couverture
         run: python -m pytest --cov
 

@@ -220,6 +220,7 @@ python -m pip install ".[dev]"                   # pytest + pytest-cov + ruff + 
 python -m ruff check .                             # lint
 python -m ruff format .                            # formatage
 python -m mypy                                     # typage
+lint-imports                                       # contrats d'architecture
 python -m pytest --cov                             # couverture (seuil 80 %)
 pre-commit install && pre-commit install --hook-type pre-push   # hooks git
 python -m pytest                                   # toute la suite

@@ -19,6 +19,7 @@ python -m pip install ".[dev]"       # pytest + pytest-cov + ruff + mypy
 python -m ruff check .             # lint (ajouter --fix pour les corrections sûres)
 python -m ruff format .            # formatage
 python -m mypy                     # typage (src)
+lint-imports                       # contrats d'architecture hexagonale (import-linter)
 python -m pytest --cov             # couverture (seuil 80 %)
 pre-commit install --install-hooks && pre-commit install --hook-type pre-push   # hooks git (ruff + mypy au commit, pytest au push)
 python -m pytest                   # toute la suite (pythonpath = src via pyproject.toml)
