@@ -106,8 +106,7 @@ def handle_chat(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Construit le parser d'arguments de la CLI."""
     parser = argparse.ArgumentParser(
-        prog="iacli",
-        description="CLI locale pour les IA open source"
+        prog="iacli", description="CLI locale pour les IA open source"
     )
     parser.set_defaults(func=handle_chat)
     parser.add_argument(
@@ -119,14 +118,13 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command")
 
     init_parser = commands.add_parser(
-        "init",
-        help="Initialiser la configuration globale"
+        "init", help="Initialiser la configuration globale"
     )
     init_parser.add_argument(
         "--config-dir",
         type=Path,
         default=argparse.SUPPRESS,
-        help="Chemin optionnel vers le dossier de configuration"
+        help="Chemin optionnel vers le dossier de configuration",
     )
     init_parser.set_defaults(func=handle_init)
 

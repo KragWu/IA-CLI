@@ -147,9 +147,7 @@ def build_control_graph(
     def agent(state: AgentState) -> dict[str, Any]:
         started = perf_counter()
         try:
-            response = normalize_text_tool_call(
-                agent_model.invoke(state["messages"])
-            )
+            response = normalize_text_tool_call(agent_model.invoke(state["messages"]))
         finally:
             if on_agent_timing is not None:
                 on_agent_timing(perf_counter() - started)

@@ -53,7 +53,9 @@ class OllamaGateway(Protocol):
         """Taille totale en octets du modèle dans le registre (`OSError` de code 404 s'il n'existe pas)."""
         ...
 
-    def pull_model(self, model: str, progress: Callable[[DownloadProgress], None]) -> None:
+    def pull_model(
+        self, model: str, progress: Callable[[DownloadProgress], None]
+    ) -> None:
         """Télécharge le modèle en appelant `progress` à chaque mise à jour ; `ValueError` en cas d'échec."""
         ...
 

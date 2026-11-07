@@ -79,7 +79,9 @@ def _truncate(text: str, budget: int) -> str:
     """Garde le début de `text` pour tenir dans `budget` caractères, marqueur de troncature compris."""
     if len(text) <= budget:
         return text
-    return text[: max(budget - len(SHELL_TRUNCATION_MARKER), 0)] + SHELL_TRUNCATION_MARKER
+    return (
+        text[: max(budget - len(SHELL_TRUNCATION_MARKER), 0)] + SHELL_TRUNCATION_MARKER
+    )
 
 
 def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
@@ -157,7 +159,9 @@ def create_workspace_tools(
 
     def iter_files(directory: Path) -> Iterator[Path]:
         """Fichiers de `directory`, triés, hors dossiers ignorés et liens symboliques."""
-        if any(part in IGNORED_DIRECTORIES for part in directory.relative_to(root).parts):
+        if any(
+            part in IGNORED_DIRECTORIES for part in directory.relative_to(root).parts
+        ):
             return
         for current, dirnames, filenames in os.walk(directory):
             # Élagage sur place : les arbres ignorés (.git, node_modules…) ne sont jamais parcourus.

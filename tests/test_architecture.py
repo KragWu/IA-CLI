@@ -130,9 +130,10 @@ def test_domain_depends_only_on_standard_library_and_itself():
 
 
 def test_services_do_not_depend_on_outer_layers():
-    assert violations(
-        "services", ("iacli.adapters", "iacli.infrastructure", "iacli.cli")
-    ) == []
+    assert (
+        violations("services", ("iacli.adapters", "iacli.infrastructure", "iacli.cli"))
+        == []
+    )
 
 
 def test_infrastructure_does_not_depend_on_adapters_or_composition_root():

@@ -10,7 +10,12 @@ from iacli.infrastructure import workspace_tools
 from iacli.infrastructure.workspace_tools import create_workspace_tools
 
 
-def create_tools(tmp_path, *, confirm_write=lambda _path, _diff: False, confirm_shell=lambda _command, _cwd: False):
+def create_tools(
+    tmp_path,
+    *,
+    confirm_write=lambda _path, _diff: False,
+    confirm_shell=lambda _command, _cwd: False,
+):
     return {
         item.name: item
         for item in create_workspace_tools(tmp_path, confirm_write, confirm_shell)
@@ -442,8 +447,7 @@ def test_run_shell_decodes_output_written_in_the_console_code_page(tmp_path):
     encoding = workspace_tools._console_encoding()
     script = tmp_path / "emit.py"
     script.write_text(
-        "import sys\n"
-        f"sys.stdout.buffer.write('répertoire été'.encode('{encoding}'))\n",
+        f"import sys\nsys.stdout.buffer.write('répertoire été'.encode('{encoding}'))\n",
         encoding="utf-8",
     )
     tools = create_tools(tmp_path, confirm_shell=lambda _command, _cwd: True)
@@ -549,9 +553,7 @@ def test_run_shell_keeps_stderr_when_stdout_alone_exceeds_the_limit(tmp_path):
 def test_run_shell_shares_the_limit_between_stdout_and_stderr(tmp_path):
     result = _run_script(
         tmp_path,
-        "import sys\n"
-        "sys.stdout.write('o' * 40000)\n"
-        "sys.stderr.write('e' * 40000)\n",
+        "import sys\nsys.stdout.write('o' * 40000)\nsys.stderr.write('e' * 40000)\n",
     )
 
     assert result.count("[sortie tronquée]") == 2

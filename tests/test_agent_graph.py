@@ -38,7 +38,9 @@ def test_graph_node_transitions():
 
     result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
 
-    tool_messages = [message for message in result["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
     assert len(model.calls) == 2
     assert model.calls[1][-1] == tool_messages[0]
     assert tool_messages[0].content == "contents of README.md"
@@ -72,9 +74,7 @@ def test_agent_timing_callback_reports_each_model_call():
 def test_graph_routes_json_text_tool_call_through_action_node():
     model = FakeChatModel(
         [
-            AIMessage(
-                content='{"name":"read_file","arguments":{"path":"README.md"}}'
-            ),
+            AIMessage(content='{"name":"read_file","arguments":{"path":"README.md"}}'),
             AIMessage(content="Voici les dernières lignes du fichier."),
         ]
     )
@@ -118,7 +118,10 @@ def test_graph_routes_multiple_json_text_tool_calls():
         "contents of src/iacli/cli.py",
     ]
     assert all(isinstance(message, ToolMessage) for message in model.calls[1][-2:])
-    assert result["messages"][-1].content == "Voici les premières lignes des deux fichiers."
+    assert (
+        result["messages"][-1].content
+        == "Voici les premières lignes des deux fichiers."
+    )
 
 
 def test_graph_routes_json_tool_call_in_a_fenced_block_surrounded_by_prose():

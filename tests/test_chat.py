@@ -216,6 +216,7 @@ def _handle_chat_with_capabilities(
         "iacli.cli.OllamaClientFactory.create", lambda _self, _settings: FakeGateway()
     )
     monkeypatch.setattr("langchain_ollama.ChatOllama", create_chat_model)
+
     def fake_run_chat(*args, **kwargs):
         chat_calls.append(args)
         if chat_kwargs is not None:
@@ -376,7 +377,13 @@ def test_system_prompt_lists_every_tool_and_forbids_denying_capabilities(tmp_pat
     )
 
     system_prompt = model.calls[0][0].content
-    for tool_name in ("read_file", "list_files", "search_files", "write_file", "run_shell"):
+    for tool_name in (
+        "read_file",
+        "list_files",
+        "search_files",
+        "write_file",
+        "run_shell",
+    ):
         assert tool_name in system_prompt
     assert "ne dis jamais que tu ne peux pas" in system_prompt
     assert "ne colle pas de code dans le chat" in system_prompt
@@ -429,10 +436,19 @@ def test_chat_reports_tool_progress(tmp_path):
 
     model = ToolCallingModel()
     presenter = RecordingPresenter()
-    run_chat(model, tmp_path, "", "fake-model", presenter=presenter, tools_factory=create_workspace_tools)
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
 
     assert "Appel des outils : read_file" in presenter.progress_updates
-    assert any("Résultat de read_file reçu" in item for item in presenter.progress_updates)
+    assert any(
+        "Résultat de read_file reçu" in item for item in presenter.progress_updates
+    )
     assert presenter.progress_updates[0] == "started"
     assert presenter.progress_updates[-1] == "stopped"
     assert presenter.tool_events == [
@@ -471,7 +487,11 @@ def test_chat_reports_turn_error_and_continues_session(tmp_path):
         for line in output
     )
     assert any("Réponse 2" in line for line in output)
-    assert [message.content for message in model.calls[1] if isinstance(message, HumanMessage)] == [
+    assert [
+        message.content
+        for message in model.calls[1]
+        if isinstance(message, HumanMessage)
+    ] == [
         "demande suivante",
     ]
     assert sum(line.startswith("temps total> demande") for line in output) == 2
@@ -516,10 +536,19 @@ def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
         output_fn=output.append,
     )
 
-    run_chat(model, tmp_path, "", "fake-model", presenter=presenter, tools_factory=create_workspace_tools)
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
 
     assert len(model.calls) == 2
-    assert any("Voici les premières lignes des deux fichiers." in line for line in output)
+    assert any(
+        "Voici les premières lignes des deux fichiers." in line for line in output
+    )
 
 
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
@@ -574,7 +603,14 @@ def test_chat_exits_cleanly_on_end_of_input(tmp_path):
         output_fn=lambda _line: None,
     )
 
-    run_chat(FakeChatModel(), tmp_path, "", "fake-model", presenter=presenter, tools_factory=create_workspace_tools)
+    run_chat(
+        FakeChatModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
 
 
 def test_progress_animation_displays_elapsed_time():
@@ -705,9 +741,7 @@ def test_failed_turn_keeps_completed_tool_work_in_history(tmp_path):
     assert any("Réponse finale." in line for line in output)
 
 
-def test_failed_turn_drops_tool_call_without_result_from_history(
-    tmp_path, monkeypatch
-):
+def test_failed_turn_drops_tool_call_without_result_from_history(tmp_path, monkeypatch):
     model, output = _run_two_turns(
         tmp_path,
         [READ_NOTES, READ_NOTES, AIMessage(content="Réponse finale.")],
@@ -732,7 +766,8 @@ def test_chat_reports_error_when_graph_produces_no_state(tmp_path, monkeypatch):
             return iter(())
 
     monkeypatch.setattr(
-        "iacli.services.chat.build_control_graph", lambda *_args, **_kwargs: EmptyGraph()
+        "iacli.services.chat.build_control_graph",
+        lambda *_args, **_kwargs: EmptyGraph(),
     )
     prompts = iter(["demande", "/exit"])
     output = []
@@ -782,7 +817,9 @@ def test_ctrl_c_during_a_turn_cancels_only_that_turn(tmp_path):
     assert any(line.startswith("erreur>") and "interrompu" in line for line in output)
     assert any("Réponse 2" in line for line in output)
     assert [
-        message.content for message in model.calls[1] if isinstance(message, HumanMessage)
+        message.content
+        for message in model.calls[1]
+        if isinstance(message, HumanMessage)
     ] == ["demande suivante"]
     assert sum(line.startswith("temps total> demande") for line in output) == 2
 
@@ -908,9 +945,7 @@ def test_chat_reports_nothing_without_a_context_limit(tmp_path):
 
 def test_presenter_prints_context_usage_and_warning():
     output = []
-    presenter = CliChatPresenter(
-        input_fn=lambda _prompt: "", output_fn=output.append
-    )
+    presenter = CliChatPresenter(input_fn=lambda _prompt: "", output_fn=output.append)
 
     presenter.show_context_usage(4500, 18000)
     presenter.show_context_warning(14400, 18000)

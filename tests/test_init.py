@@ -138,7 +138,9 @@ def test_configuration_gateway_creates_default_instructions(tmp_path):
     state = FileConfigurationGateway().ensure_configuration(tmp_path / "iacli")
 
     assert (state.directory / "config.toml").is_file()
-    assert (state.directory / "IACLI.md").read_text(encoding="utf-8") == DEFAULT_INSTRUCTIONS
+    assert (state.directory / "IACLI.md").read_text(
+        encoding="utf-8"
+    ) == DEFAULT_INSTRUCTIONS
     assert state.ollama.default_model == "qwen2.5-coder:7b"
 
 
@@ -167,7 +169,9 @@ def test_use_case_skips_registry_and_prompt_when_model_is_installed(tmp_path):
     use_case.execute(tmp_path / "iacli")
 
     assert presenter.codes().count(InitializationEventCode.MODEL_INSTALLED) == 1
-    assert presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    assert (
+        presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    )
     assert presenter.confirmations == []
     assert factory.settings[0].default_model == "qwen2.5-coder:7b"
 
@@ -186,7 +190,9 @@ def test_use_case_pulls_model_after_confirmation_and_reports_progress(tmp_path):
     assert ollama.pulls == ["qwen2.5-coder:7b"]
     assert presenter.codes().count(InitializationEventCode.PULL_PROGRESS) == 1
     assert presenter.codes().count(InitializationEventCode.PULL_COMPLETED) == 1
-    assert presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    assert (
+        presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    )
 
 
 def test_use_case_does_not_prompt_or_pull_when_disk_space_is_insufficient(tmp_path):
@@ -212,7 +218,9 @@ def test_use_case_reports_unreachable_ollama_but_completes_configuration(tmp_pat
 
     assert presenter.codes().count(InitializationEventCode.OLLAMA_UNREACHABLE) == 1
     assert presenter.codes().count(InitializationEventCode.CONFIGURATION_CREATED) == 1
-    assert presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    assert (
+        presenter.codes().count(InitializationEventCode.INITIALIZATION_COMPLETED) == 1
+    )
 
 
 def test_use_case_warns_for_missing_model_in_registry(tmp_path):
@@ -241,12 +249,18 @@ def test_use_case_does_not_swallow_keyboard_interrupt_during_pull(tmp_path):
 def test_cli_presenter_maps_events_and_confirms_without_exposing_it_to_use_case():
     output = []
     answers = iter(("oui",))
-    presenter = CliPresenter(input_fn=lambda _prompt: next(answers), output_fn=output.append)
+    presenter = CliPresenter(
+        input_fn=lambda _prompt: next(answers), output_fn=output.append
+    )
 
     presenter.present(
         InitializationEvent(
             InitializationEventCode.PULL_PROGRESS,
-            {"status": "downloading", "completed": 25 * 1024**2, "total": 100 * 1024**2},
+            {
+                "status": "downloading",
+                "completed": 25 * 1024**2,
+                "total": 100 * 1024**2,
+            },
         )
     )
 
@@ -254,7 +268,9 @@ def test_cli_presenter_maps_events_and_confirms_without_exposing_it_to_use_case(
     assert len(output) == 1
 
 
-def test_cli_returns_interrupt_status_when_initialization_is_cancelled(monkeypatch, capsys):
+def test_cli_returns_interrupt_status_when_initialization_is_cancelled(
+    monkeypatch, capsys
+):
     monkeypatch.setattr(sys, "argv", ["iacli", "init"])
     monkeypatch.setattr(
         "iacli.cli.handle_init",
@@ -303,7 +319,9 @@ def test_registry_index_selects_the_current_platform_via_public_api(
     fake_urlopen,
     monkeypatch,
 ):
-    monkeypatch.setattr("iacli.infrastructure.ollama.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "iacli.infrastructure.ollama.platform.system", lambda: "Windows"
+    )
     monkeypatch.setattr("iacli.infrastructure.ollama.platform.machine", lambda: "AMD64")
     client = OllamaClient(registry_url="https://registry.test", urlopen=fake_urlopen)
     manifest_url = client.model_manifest_url("model:tag")

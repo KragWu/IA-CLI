@@ -74,7 +74,9 @@ class FileConfigurationGateway:
             for key, default in _DEFAULT_OLLAMA.items():
                 value = ollama.get(key, default)
                 if not isinstance(value, str) or not value.strip():
-                    raise ValueError(f"La valeur ollama.{key} doit être une chaîne non vide.")
+                    raise ValueError(
+                        f"La valeur ollama.{key} doit être une chaîne non vide."
+                    )
                 values[key] = value.strip()
             num_ctx = ollama.get("num_ctx", DEFAULT_NUM_CTX)
             if isinstance(num_ctx, bool) or not isinstance(num_ctx, int) or num_ctx < 1:
