@@ -33,6 +33,37 @@ iacli / iacli chat                 # conversation (chat est la commande par déf
 
 Ruff (lint + format), mypy, import-linter et coverage sont configurés dans `pyproject.toml` ; il n'y a pas de build configuré. Les scripts `scripts/*.sh` se lancent avec Bash (Git Bash sous Windows). **Lancer `scripts/check.sh` avant de commiter.** `scripts/audit.sh` installe le projet dans un venv jetable pour auditer uniquement ses dépendances (auditer le Python global remonterait des paquets sans rapport). La CI GitHub (`.github/workflows/ci.yml`) est volontairement en déclenchement manuel (`workflow_dispatch`) car les minutes sont facturées ; Dependabot reste actif. Prérequis runtime : Git, ripgrep (`rg`) et Ollama sur `http://localhost:11434`.
 
+## Vérification sous Linux (WSL)
+
+Le projet est développé sous Windows mais doit rester portable (`killpg`, chemins, processus de `run_shell`). Pour lancer la suite sous Linux sans CI, utiliser une distro WSL (`wsl -l -q` pour les lister ; sur cette machine : `podman-machine-default`, Fedora 40 avec Python 3.12, sans pip ni git, utilisateur non root). Depuis Git Bash, à la racine du dépôt :
+
+```bash
+DISTRO=podman-machine-default
+
+# 1. Copie propre du dépôt (état du dernier commit) dans le /tmp de la distro
+git archive HEAD | wsl -d $DISTRO -- sh -c 'rm -rf /tmp/iacli && mkdir /tmp/iacli && tar -x -C /tmp/iacli'
+
+# 2. Venv + dépendances (le Python système suffit, aucun droit root requis)
+wsl -d $DISTRO -- sh -c 'python3 -m venv /tmp/iacli-venv && cd /tmp/iacli && /tmp/iacli-venv/bin/pip install -q ".[dev]"'
+
+# 3. Toutes les vérifications, via un script passé sur l'entrée standard
+cat <<'EOF' | wsl -d $DISTRO -- bash -s
+cd /tmp/iacli
+export PATH=/tmp/iacli-venv/bin:/usr/bin:/bin
+PYTHON=python bash scripts/check.sh
+EOF
+
+# 4. Nettoyage
+wsl -d $DISTRO -- sh -c 'rm -rf /tmp/iacli /tmp/iacli-venv'
+```
+
+Points à connaître :
+
+- `git archive HEAD` ne copie que ce qui est **commité** : commiter (ou stasher) avant de tester. Cela évite aussi de polluer l'arbre Windows (`__pycache__`, `.mypy_cache`) et les problèmes de fins de ligne CRLF.
+- Ne jamais écrire `PATH=...:$PATH` dans une commande `wsl -- sh -c '...'` lancée depuis Git Bash : `$PATH` est développé côté Windows (avec des parenthèses qui cassent le shell). D'où le script passé en entrée standard avec un heredoc entre quotes (`<<'EOF'`).
+- Résultat attendu : tout passe, avec 1 test ignoré (`tests/test_workspace_tools.py`, page de code OEM propre à Windows) et une couverture d'environ 84 %.
+- `scripts/check.sh` lance mypy avec `--platform linux` puis `--platform win32` : les `# type: ignore[attr-defined]` dans `workspace_tools.py` couvrent les API propres à une plateforme (`killpg`, `CREATE_NEW_PROCESS_GROUP`, `windll`).
+
 ## Architecture
 
 Architecture en couches (ports et adaptateurs) sous `src/iacli/` :
