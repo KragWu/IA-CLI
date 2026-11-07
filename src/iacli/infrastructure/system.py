@@ -48,24 +48,26 @@ class LocalSystemGateway:
         system_name = platform.system().lower()
         if "windows" in system_name:
             hints = {
-                "python": "Installez vfox (gestionnaire de versions) : 'winget install version-fox.vfox'.\n" + 
-                "Puis après redémarrage du terminal faites : 'vfox add python'.\n" +
-                "Puis 'vfox install python@3.11' (ou supérieur) et pour finir 'vfox use -g python@3.11'.",
+                "python": "Installez vfox (gestionnaire de versions) : 'winget install version-fox.vfox'.\n"
+                + "Puis après redémarrage du terminal faites : 'vfox add python'.\n"
+                + "Puis 'vfox install python@3.11' (ou supérieur) et pour finir 'vfox use -g python@3.11'.",
                 "git": "Installer Git via 'winget install --id Git.Git -e' ou depuis git-scm.com.",
                 "rg": "Installer ripgrep via 'winget install --id BurntSushi.ripgrep.MSBuild -e'.",
             }
         elif "darwin" in system_name or "mac" in system_name:
             hints = {
-                "python": "Installer Python avec 'brew install python@3.11' (ou supérieur).\nPuis faites 'brew link --overwrite python@3.11' " +
-                "pour définir la version par défaut.",
+                "python": "Installer Python avec 'brew install python@3.11' (ou supérieur).\nPuis faites 'brew link --overwrite python@3.11' "
+                + "pour définir la version par défaut.",
                 "git": "Installer Git avec 'brew install git'.",
                 "rg": "Installer ripgrep avec 'brew install ripgrep'.",
             }
         else:
             hints = {
-                "python": "Installer SDKMAN (gestionnaire de version) 'curl -s \"https://get.sdkman.io\" | bash'.\n" +
-                "Puis faites la commande 'sdk install python 3.11.0-open' (ou supérieur) et finir par 'sdk use python 3.11.0-open'",
+                "python": "Installer SDKMAN (gestionnaire de version) 'curl -s \"https://get.sdkman.io\" | bash'.\n"
+                + "Puis faites la commande 'sdk install python 3.11.0-open' (ou supérieur) et finir par 'sdk use python 3.11.0-open'",
                 "git": "Installer Git avec 'sudo apt install git' (Debian/Ubuntu), 'sudo dnf install git' (Fedora) ou 'sudo apk add git' (Alpine).",
                 "rg": "Installer ripgrep avec 'sudo apt install ripgrep' (Debian/Ubuntu), 'sudo dnf install ripgrep' (Fedora) ou 'sudo apk add ripgrep' (Alpine).",
             }
-        return hints.get(executable, f"Installez '{executable}' pour votre système d'exploitation.")
+        return hints.get(
+            executable, f"Installez '{executable}' pour votre système d'exploitation."
+        )

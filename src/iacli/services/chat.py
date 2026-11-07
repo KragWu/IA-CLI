@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Any
 from time import perf_counter
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 
 from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
@@ -107,13 +113,17 @@ def run_chat(
         )
         messages = outcome.messages
         if outcome.error is not None:
-            chat_presenter.show_error(str(outcome.error) or type(outcome.error).__name__)
+            chat_presenter.show_error(
+                str(outcome.error) or type(outcome.error).__name__
+            )
         else:
             chat_presenter.show_response(outcome.response)
         if context_limit is not None and outcome.context_tokens is not None:
             chat_presenter.show_context_usage(outcome.context_tokens, context_limit)
             if outcome.context_tokens >= context_limit * CONTEXT_WARNING_RATIO:
-                chat_presenter.show_context_warning(outcome.context_tokens, context_limit)
+                chat_presenter.show_context_warning(
+                    outcome.context_tokens, context_limit
+                )
 
 
 @dataclass

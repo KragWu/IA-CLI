@@ -43,22 +43,34 @@ class CliPresenter:
             suffix = f" ({values['url']})" if "url" in values else ""
             self._output(f"Étape {number}/4 : {label}{suffix}.")
         elif code is InitializationEventCode.PREREQUISITE_MISSING:
-            self._output(f"Avertissement : dépendance système manquante : {values['dependency']}.")
+            self._output(
+                f"Avertissement : dépendance système manquante : {values['dependency']}."
+            )
             self._output(f"Conseil : {values['hint']}")
         elif code is InitializationEventCode.CONFIGURATION_WARNING:
-            self._output(f"Avertissement : configuration illisible ({values['error']}), utilisation des valeurs par défaut.")
+            self._output(
+                f"Avertissement : configuration illisible ({values['error']}), utilisation des valeurs par défaut."
+            )
         elif code is InitializationEventCode.OLLAMA_UNREACHABLE:
-            self._output(f"Avertissement : Ollama n'est pas accessible sur {values['url']} ({values['error']}).")
+            self._output(
+                f"Avertissement : Ollama n'est pas accessible sur {values['url']} ({values['error']})."
+            )
         elif code is InitializationEventCode.OLLAMA_CONNECTED:
             self._output("Connexion à Ollama confirmée.")
         elif code is InitializationEventCode.MODEL_INSTALLED:
-            self._output(f"Le modèle {values['model']} est déjà installé, aucun téléchargement nécessaire.")
+            self._output(
+                f"Le modèle {values['model']} est déjà installé, aucun téléchargement nécessaire."
+            )
         elif code is InitializationEventCode.MODEL_MISSING:
             self._output(f"Le modèle {values['model']} n'est pas présent localement.")
         elif code is InitializationEventCode.MODEL_LOOKUP_FAILED:
-            self._output(f"Avertissement : impossible de vérifier le modèle dans le registre Ollama ({values['error']}).")
+            self._output(
+                f"Avertissement : impossible de vérifier le modèle dans le registre Ollama ({values['error']})."
+            )
         elif code is InitializationEventCode.MODEL_NOT_FOUND:
-            self._output(f"Avertissement : le modèle {values['model']} n'existe pas dans le registre Ollama.")
+            self._output(
+                f"Avertissement : le modèle {values['model']} n'existe pas dans le registre Ollama."
+            )
         elif code is InitializationEventCode.MODEL_FOUND:
             self._output(
                 f"Modèle {values['model']} trouvé dans le registre Ollama "
@@ -71,7 +83,9 @@ class CliPresenter:
                 f"{self._format_size(values['available_bytes'])} disponibles)."
             )
         elif code is InitializationEventCode.PULL_STARTED:
-            self._output(f"Téléchargement de {values['model']} lancé, progression reçue d'Ollama :")
+            self._output(
+                f"Téléchargement de {values['model']} lancé, progression reçue d'Ollama :"
+            )
         elif code is InitializationEventCode.PULL_PROGRESS:
             completed = values.get("completed")
             total = values.get("total")
@@ -84,7 +98,9 @@ class CliPresenter:
             else:
                 self._output(f"Téléchargement : {values['status']}")
         elif code is InitializationEventCode.PULL_FAILED:
-            self._output(f"Avertissement : échec du téléchargement ({values['error']}).")
+            self._output(
+                f"Avertissement : échec du téléchargement ({values['error']})."
+            )
         elif code is InitializationEventCode.PULL_COMPLETED:
             self._output(f"Modèle {values['model']} téléchargé.")
         elif code is InitializationEventCode.PULL_SKIPPED:
@@ -105,9 +121,13 @@ class CliPresenter:
 
     def confirm_model_download(self, model: str, size_bytes: int) -> bool:
         """Question `[O/n]` : une réponse vide vaut oui (contrairement aux confirmations du chat)."""
-        answer = self._input(
-            f"Télécharger le modèle {model} ({self._format_size(size_bytes)}) ? [O/n] "
-        ).strip().lower()
+        answer = (
+            self._input(
+                f"Télécharger le modèle {model} ({self._format_size(size_bytes)}) ? [O/n] "
+            )
+            .strip()
+            .lower()
+        )
         return answer in ("", "o", "oui", "y", "yes")
 
     @staticmethod

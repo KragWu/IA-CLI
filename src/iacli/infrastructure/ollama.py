@@ -68,7 +68,9 @@ class OllamaClient:
                 return descriptor
         if len(candidates) == 1 and not candidates[0].get("platform"):
             return candidates[0]
-        raise ValueError(f"Aucun manifeste Ollama compatible avec {os_name}/{architecture}.")
+        raise ValueError(
+            f"Aucun manifeste Ollama compatible avec {os_name}/{architecture}."
+        )
 
     @staticmethod
     def _model_manifest_url(model: str, registry_url: str) -> str:
@@ -98,7 +100,9 @@ class OllamaClient:
         """Modèles installés tels que renvoyés par `GET /api/tags` (délai : 5 s)."""
         with self.urlopen(Request(self.list_models_url), timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        if not isinstance(payload, dict) or not isinstance(payload.get("models", []), list):
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("models", []), list
+        ):
             raise ValueError("La réponse Ollama doit contenir une liste de modèles.")
         return payload.get("models", [])
 
@@ -141,7 +145,9 @@ class OllamaClient:
         if not isinstance(model_info, dict):
             return None
         architecture = model_info.get("general.architecture")
-        keys = [f"{architecture}.context_length"] if isinstance(architecture, str) else []
+        keys = (
+            [f"{architecture}.context_length"] if isinstance(architecture, str) else []
+        )
         keys += sorted(
             key
             for key in model_info
@@ -184,10 +190,11 @@ class OllamaClient:
             descriptor = self._select_manifest_descriptor(manifest)
             repository_url = request.full_url.rsplit("/manifests/", 1)[0]
             manifest_url = (
-                f"{repository_url}/manifests/"
-                f"{quote(descriptor['digest'], safe=':')}"
+                f"{repository_url}/manifests/{quote(descriptor['digest'], safe=':')}"
             )
-            with self.urlopen(Request(manifest_url, headers=request.headers), timeout=10) as response:
+            with self.urlopen(
+                Request(manifest_url, headers=request.headers), timeout=10
+            ) as response:
                 manifest = json.loads(response.read().decode("utf-8"))
             if not isinstance(manifest, dict):
                 raise ValueError("Le registre Ollama a retourné un manifeste invalide.")
@@ -197,7 +204,9 @@ class OllamaClient:
             raise ValueError("Le manifeste Ollama contient une couche invalide.")
         size = sum(int(descriptor.get("size", 0)) for descriptor in descriptors)
         if size <= 0:
-            raise ValueError("Le manifeste Ollama ne fournit pas de taille exploitable.")
+            raise ValueError(
+                "Le manifeste Ollama ne fournit pas de taille exploitable."
+            )
         return size
 
     def pull_model(
@@ -216,7 +225,9 @@ class OllamaClient:
             self._read_pull_stream(response, progress)
 
     @staticmethod
-    def _read_pull_stream(response, progress: Callable[[DownloadProgress], None]) -> None:
+    def _read_pull_stream(
+        response, progress: Callable[[DownloadProgress], None]
+    ) -> None:
         """Lit le flux JSON ligne à ligne ; `ValueError` si Ollama signale une erreur
         ou si le flux se termine sans le statut final `success`."""
         succeeded = False
@@ -225,7 +236,9 @@ class OllamaClient:
                 continue
             event = json.loads(line.decode("utf-8"))
             if not isinstance(event, dict):
-                raise ValueError("Ollama a retourné un événement de téléchargement invalide.")
+                raise ValueError(
+                    "Ollama a retourné un événement de téléchargement invalide."
+                )
             if "error" in event:
                 raise ValueError(event["error"])
             status = event.get("status", "Téléchargement en cours")
