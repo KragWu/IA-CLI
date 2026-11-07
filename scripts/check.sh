@@ -16,8 +16,12 @@ step "ruff check"
 step "ruff format --check"
 "$PYTHON" -m ruff format --check .
 
-step "mypy"
-"$PYTHON" -m mypy
+# Le code a des branches propres à Windows et à POSIX : on type-vérifie les deux.
+step "mypy (linux)"
+"$PYTHON" -m mypy --platform linux
+
+step "mypy (win32)"
+"$PYTHON" -m mypy --platform win32
 
 step "import-linter (contrats d'architecture)"
 lint-imports
