@@ -1,4 +1,4 @@
-"""Value objects describing an installed model."""
+"""Objets de valeur décrivant un modèle installé."""
 
 from dataclasses import dataclass
 

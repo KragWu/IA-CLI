@@ -1,4 +1,4 @@
-"""LangGraph orchestration for an injectable tool-calling agent."""
+"""Orchestration LangGraph d'un agent qui appelle des outils (modèle et outils injectés)."""
 
 import json
 import re
@@ -15,6 +15,12 @@ from langgraph.prebuilt import ToolNode
 
 
 class AgentState(TypedDict, total=False):
+    """État partagé par les nœuds du graphe.
+
+    `messages` : historique (les nouveaux messages sont ajoutés, pas remplacés) ;
+    `tool_iterations` : exécutions d'outils déjà faites pendant ce tour ;
+    `evaluation` : résultat de l'évaluateur ; `error` : motif d'arrêt anticipé."""
+
     messages: Annotated[list[AnyMessage], add_messages]
     tool_iterations: int
     evaluation: object
@@ -39,7 +45,7 @@ def format_tool_error(error: Exception) -> str:
 
 
 class MaxToolIterationsError(RuntimeError):
-    """Raised when the agent requests another tool after reaching its limit."""
+    """Levée quand le modèle demande encore un outil alors que la limite d'exécutions est atteinte."""
 
 
 def build_control_graph(
@@ -50,7 +56,14 @@ def build_control_graph(
     max_iterations: int = 25,
     on_agent_timing: AgentTimingCallback | None = None,
 ):
-    """Build a graph that alternates between an agent and its tools."""
+    """Construit un graphe qui alterne entre le modèle (nœud `agent`) et ses outils (nœud `action`).
+
+    `model` doit fournir `bind_tools` et `invoke`. Quand le modèle répond sans appel
+    d'outil, le nœud `evaluator` appelle `evaluator(state)` : une exception de sa part
+    fait échouer le tour. Au-delà de `max_iterations` exécutions d'outils, la
+    demande suivante d'outil arrête le tour avec `MaxToolIterationsError`.
+    `on_agent_timing` reçoit la durée (en secondes) de chaque appel au modèle.
+    """
     if max_iterations < 1:
         raise ValueError("max_iterations doit être supérieur ou égal à 1.")
 
@@ -59,7 +72,8 @@ def build_control_graph(
     tool_names = {tool.name for tool in tools}
 
     def parse_tool_calls(text: str) -> list[dict[str, Any]] | None:
-        """Return tool calls if `text` is only JSON objects naming known tools."""
+        """Renvoie des tool calls si `text` ne contient que des objets JSON
+        `{"name": ..., "arguments": {...}}` désignant des outils connus, sinon None."""
         decoder = json.JSONDecoder()
         position = 0
         payloads = []
@@ -100,6 +114,10 @@ def build_control_graph(
         return calls
 
     def normalize_text_tool_call(response: Any) -> Any:
+        """Convertit un appel d'outil écrit en JSON dans le texte (brut ou dans un bloc
+        ```json) en vrai tool call ; sinon renvoie la réponse inchangée.
+
+        Certains petits modèles ne passent pas par le mécanisme de tool calling d'Ollama."""
         if not isinstance(response, AIMessage) or response.tool_calls:
             return response
         if not isinstance(response.content, str):
@@ -146,6 +164,7 @@ def build_control_graph(
         return updates
 
     def route_after_agent(state: AgentState) -> str:
+        """Aiguillage : vers les outils si le modèle en demande (et que la limite n'est pas dépassée), sinon vers l'évaluateur."""
         if state.get("error"):
             return "evaluator"
         if state["messages"][-1].tool_calls:

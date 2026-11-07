@@ -1,4 +1,4 @@
-"""Interactive console adapter for the agent graph."""
+"""Adapter console du chat : invite, affichage, confirmations et indicateur animé."""
 
 from collections.abc import Callable
 import json
@@ -10,6 +10,13 @@ from typing import TextIO
 
 
 class CliChatPresenter:
+    """Implémente le port `ChatPresenter` pour un terminal.
+
+    Les lignes de résultat vont sur la sortie `output_fn` (stdout) ; l'indicateur
+    animé s'écrit sur `progress_stream` (stderr) et seulement si c'est un terminal
+    interactif. `input_fn` et `output_fn` sont injectables pour les tests.
+    """
+
     def __init__(
         self,
         input_fn: Callable[[str], str] = input,
@@ -30,6 +37,7 @@ class CliChatPresenter:
         self._progress_thread: Thread | None = None
 
     def _emit(self, line: str) -> None:
+        """Affiche une ligne en effaçant d'abord l'indicateur animé pour ne pas le mélanger au texte."""
         with self._output_lock:
             if self._progress_thread is not None:
                 self._progress_stream.write("\r\033[2K")
@@ -80,12 +88,14 @@ class CliChatPresenter:
         return f"{count:,}".replace(",", " ")
 
     def start_progress(self) -> None:
+        """Démarre le chronomètre du tour et l'animation (terminal interactif uniquement)."""
         self._progress_message = "L'agent traite votre demande"
         self._progress_started_at = perf_counter()
         self._emit(f"{self._progress_message}...")
         self._resume_progress()
 
     def resume_progress(self) -> None:
+        """Relance l'animation après une confirmation (le chronomètre n'est pas remis à zéro)."""
         self._resume_progress()
 
     def _resume_progress(self) -> None:
@@ -100,10 +110,12 @@ class CliChatPresenter:
             self._progress_thread = thread
 
     def update_progress(self, message: str) -> None:
+        """Change le message affiché à côté de l'animation."""
         with self._progress_lock:
             self._progress_message = message
 
     def stop_progress(self) -> None:
+        """Arrête l'animation et efface sa ligne ; sans effet si elle n'est pas lancée."""
         with self._thread_lock:
             thread = self._progress_thread
             if thread is None:
@@ -133,6 +145,7 @@ class CliChatPresenter:
             frame = (frame + 1) % len(frames)
 
     def confirm_file_write(self, path: str, diff: str) -> bool:
+        """Suspend l'animation, montre le diff et demande confirmation (refus par défaut)."""
         self.stop_progress()
         self._emit(f"Modification proposée pour {path} :")
         self._emit(diff)
@@ -142,6 +155,7 @@ class CliChatPresenter:
             self.resume_progress()
 
     def confirm_shell_command(self, command: str, workspace: Path) -> bool:
+        """Suspend l'animation, montre la commande et demande confirmation (refus par défaut)."""
         self.stop_progress()
         self._emit(f"Commande proposée dans {workspace} : {command}")
         try:
@@ -150,11 +164,13 @@ class CliChatPresenter:
             self.resume_progress()
 
     def _confirm(self, prompt: str) -> bool:
+        """True pour `o`, `oui`, `y` ou `yes` ; toute autre réponse, vide comprise, est un refus."""
         answer = self._input(prompt).strip().casefold()
         return answer in {"o", "oui", "y", "yes"}
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
+        """Durée lisible : `850 ms`, `1.25 s`, `2 min 05 s` ou `1 h 02 min 03 s`."""
         if seconds < 1:
             milliseconds = seconds * 1000
             if milliseconds < 10:

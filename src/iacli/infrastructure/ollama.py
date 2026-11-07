@@ -1,4 +1,4 @@
-"""HTTP gateway for Ollama and its model registry."""
+"""Client HTTP (bibliothèque standard) pour Ollama et son registre de modèles."""
 
 import json
 import platform
@@ -11,6 +11,12 @@ from iacli.domain.models import ModelInfo
 
 
 class OllamaClient:
+    """Implémente le port `OllamaGateway`.
+
+    `urlopen` est injectable pour les tests. Un échec réseau lève `OSError`
+    (`urllib.error.URLError`/`HTTPError`) ; une réponse inattendue lève `ValueError`.
+    """
+
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
@@ -23,6 +29,7 @@ class OllamaClient:
 
     @staticmethod
     def _platform_os_and_architecture() -> tuple[str, str]:
+        """Système et architecture dans le vocabulaire du registre (ex. `windows`, `amd64`)."""
         machine = platform.machine().lower()
         architecture = {
             "amd64": "amd64",
@@ -42,6 +49,7 @@ class OllamaClient:
 
     @classmethod
     def _select_manifest_descriptor(cls, manifest: dict) -> dict:
+        """Choisit, dans un index multi-plateforme, le manifeste de la machine locale."""
         candidates = manifest.get("manifests", [])
         if not isinstance(candidates, list) or not candidates:
             raise ValueError("Aucun manifeste Ollama disponible.")
@@ -64,6 +72,9 @@ class OllamaClient:
 
     @staticmethod
     def _model_manifest_url(model: str, registry_url: str) -> str:
+        """URL du manifeste : `qwen2.5-coder:7b` devient `<registre>/v2/library/qwen2.5-coder/manifests/7b`.
+
+        Sans espace de noms le modèle est dans `library/` ; sans tag, c'est `latest`."""
         model_name, separator, tag = model.partition(":")
         if "/" not in model_name:
             model_name = f"library/{model_name}"
@@ -79,10 +90,12 @@ class OllamaClient:
         return self._model_manifest_url(model, self.registry_url)
 
     def pull_url(self, model: str) -> str:
+        # `model` est ignoré : il est envoyé dans le corps de la requête, pas dans l'URL.
         del model
         return f"{self.base_url}/api/pull"
 
     def list_models(self) -> list[dict]:
+        """Modèles installés tels que renvoyés par `GET /api/tags` (délai : 5 s)."""
         with self.urlopen(Request(self.list_models_url), timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
         if not isinstance(payload, dict) or not isinstance(payload.get("models", []), list):
@@ -90,6 +103,7 @@ class OllamaClient:
         return payload.get("models", [])
 
     def installed_models(self) -> set[str]:
+        """Noms des modèles installés (champ `name`, tag inclus)."""
         return {
             model["name"]
             for model in self.list_models()
@@ -97,6 +111,9 @@ class OllamaClient:
         }
 
     def model_info(self, model: str) -> ModelInfo:
+        """Capacités (ex. `tools`) et contexte maximal du modèle, via `POST /api/show`.
+
+        Un champ absent de la réponse vaut None (« inconnu »)."""
         request = Request(
             f"{self.base_url}/api/show",
             data=json.dumps({"model": model}).encode("utf-8"),
@@ -119,6 +136,7 @@ class OllamaClient:
 
     @staticmethod
     def _context_length(payload: dict) -> int | None:
+        """Cherche `<architecture>.context_length` dans `model_info`, à défaut n'importe quelle clé `*.context_length`."""
         model_info = payload.get("model_info")
         if not isinstance(model_info, dict):
             return None
@@ -136,9 +154,14 @@ class OllamaClient:
         return None
 
     def is_model_installed(self, model: str) -> bool:
+        """True si le nom exact (tag compris) figure parmi les modèles installés."""
         return model in self.installed_models()
 
     def remote_model_size(self, model: str) -> int:
+        """Taille à télécharger : somme des tailles de la config et des couches du manifeste.
+
+        Un index multi-plateforme déclenche une seconde requête vers le manifeste adapté
+        à la machine. Un modèle inexistant lève `HTTPError` (code 404)."""
         request = Request(
             self.model_manifest_url(model),
             headers={
@@ -182,6 +205,7 @@ class OllamaClient:
         model: str,
         progress: Callable[[DownloadProgress], None],
     ) -> None:
+        """Télécharge le modèle via `POST /api/pull` en flux (délai maximal : 1 h)."""
         request = Request(
             self.pull_url(model),
             data=json.dumps({"name": model, "stream": True}).encode("utf-8"),
@@ -193,6 +217,8 @@ class OllamaClient:
 
     @staticmethod
     def _read_pull_stream(response, progress: Callable[[DownloadProgress], None]) -> None:
+        """Lit le flux JSON ligne à ligne ; `ValueError` si Ollama signale une erreur
+        ou si le flux se termine sans le statut final `success`."""
         succeeded = False
         while line := response.readline():
             if not line.strip():

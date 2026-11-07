@@ -1,1 +1,1 @@
-"""Domain types for IA-CLI."""
+"""Domaine : objets métier purs, sans dépendance vers le reste du projet."""

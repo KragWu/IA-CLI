@@ -1,4 +1,4 @@
-"""Application events presented by the outer adapters."""
+"""Événements métier émis par les cas d'usage et mis en forme par les adapters."""
 
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -6,6 +6,8 @@ from typing import Mapping
 
 
 class InitializationEventCode(StrEnum):
+    """Type d'événement émis pendant `iacli init`."""
+
     STEP = "step"
     PREREQUISITE_MISSING = "prerequisite_missing"
     CONFIGURATION_WARNING = "configuration_warning"
@@ -28,12 +30,18 @@ class InitializationEventCode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class InitializationEvent:
+    """Événement d'initialisation : un code et ses valeurs (modèle, url, erreur…).
+
+    Le texte affiché à l'utilisateur est décidé par le présentateur, pas ici."""
+
     code: InitializationEventCode
     values: Mapping[str, str | int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class DownloadProgress:
+    """Progression d'un téléchargement de modèle ; `completed`/`total` en octets, None si inconnus."""
+
     status: str
     completed: int | None = None
     total: int | None = None
