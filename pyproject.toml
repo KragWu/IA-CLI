@@ -26,6 +26,7 @@ where = ["src"]
 [project.optional-dependencies]
 dev = [
     "mypy",
+    "pre-commit",
     "pytest",
     "pytest-cov",
     "ruff",

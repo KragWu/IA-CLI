@@ -221,6 +221,7 @@ python -m ruff check .                             # lint
 python -m ruff format .                            # formatage
 python -m mypy                                     # typage
 python -m pytest --cov                             # couverture (seuil 80 %)
+pre-commit install && pre-commit install --hook-type pre-push   # hooks git
 python -m pytest                                   # toute la suite
 python -m pytest tests/test_chat.py::nom_du_test   # un seul test
 ```
