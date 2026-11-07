@@ -25,6 +25,7 @@ where = ["src"]
 
 [project.optional-dependencies]
 dev = [
+    "import-linter",
     "mypy",
     "pre-commit",
     "pytest",
@@ -71,3 +72,23 @@ skip_covered = true
 python_version = "3.11"
 files = ["src"]
 warn_unused_ignores = false
+
+[tool.importlinter]
+root_package = "iacli"
+
+[[tool.importlinter.contracts]]
+name = "Le domaine ne dépend d'aucune autre couche"
+type = "forbidden"
+source_modules = ["iacli.domain"]
+forbidden_modules = ["iacli.services", "iacli.infrastructure", "iacli.adapters", "iacli.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Les services ne dépendent ni de l'infrastructure ni des adapters"
+type = "forbidden"
+source_modules = ["iacli.services"]
+forbidden_modules = ["iacli.infrastructure", "iacli.adapters", "iacli.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Infrastructure et adapters sont indépendants l'un de l'autre"
+type = "independence"
+modules = ["iacli.infrastructure", "iacli.adapters"]
