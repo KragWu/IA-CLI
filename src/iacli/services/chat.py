@@ -1,10 +1,9 @@
 """Cas d'usage du chat interactif, piloté par le graphe LangGraph de `agent_graph`."""
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from time import perf_counter
+from typing import Any
 
 from langchain_core.messages import (
     AIMessage,
@@ -177,7 +176,7 @@ def _run_turn(
         failure: Exception | None = RuntimeError("Tour interrompu par l'utilisateur.")
     except EOFError:
         failure = RuntimeError("L'entrée standard a été fermée pendant le tour.")
-    except Exception as error:  # noqa: BLE001 - un tour en échec ne doit pas fermer la session
+    except Exception as error:
         failure = error
     else:
         failure = None

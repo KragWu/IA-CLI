@@ -1,8 +1,8 @@
 """Point d'entrée de la commande iacli."""
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter

@@ -1,8 +1,8 @@
 """Événements métier émis par les cas d'usage et mis en forme par les adapters."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Mapping
 
 
 class InitializationEventCode(StrEnum):

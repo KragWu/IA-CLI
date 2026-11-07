@@ -1,8 +1,8 @@
-from pathlib import Path
 import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -427,7 +427,7 @@ def test_write_file_does_not_warn_for_uniform_line_endings(tmp_path):
 def test_shell_output_decoding_prefers_utf8(monkeypatch):
     monkeypatch.setattr(workspace_tools, "_console_encoding", lambda: "cp850")
 
-    assert workspace_tools._decode_output("café ✓".encode("utf-8")) == "café ✓"
+    assert workspace_tools._decode_output("café ✓".encode()) == "café ✓"
 
 
 def test_shell_output_decoding_falls_back_to_the_console_code_page(monkeypatch):

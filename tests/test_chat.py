@@ -1,19 +1,18 @@
 import codecs
+import threading
+import time
 from argparse import Namespace
 from io import StringIO
 from pathlib import Path
-import threading
-import time
 
 import pytest
-
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
-from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.domain.config import ConfigurationState, OllamaSettings
 from iacli.domain.models import ModelInfo
+from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.services.chat import run_chat
 from tests.fakes import FakeChatModel
 
@@ -180,7 +179,7 @@ def _handle_chat_with_capabilities(
     num_ctx=18000,
     model_arguments=None,
     chat_kwargs=None,
-    instructions_bytes="Mes instructions".encode("utf-8"),
+    instructions_bytes=b"Mes instructions",
 ):
     (tmp_path / "IACLI.md").write_bytes(instructions_bytes)
     settings = OllamaSettings(
@@ -252,7 +251,7 @@ def test_chat_handler_accepts_instructions_saved_with_a_utf8_bom(tmp_path, monke
         tmp_path,
         monkeypatch,
         {"tools"},
-        instructions_bytes=codecs.BOM_UTF8 + "Mes instructions".encode("utf-8"),
+        instructions_bytes=codecs.BOM_UTF8 + b"Mes instructions",
     )
 
     assert calls[0][2] == "Mes instructions"
@@ -266,7 +265,7 @@ def test_chat_handler_accepts_instructions_saved_with_a_utf8_bom(tmp_path, monke
 def test_chat_handler_reports_instructions_that_are_not_utf8(
     tmp_path, monkeypatch, instructions_bytes
 ):
-    with pytest.raises(ValueError, match="IACLI.md") as error:
+    with pytest.raises(ValueError, match=r"IACLI\.md") as error:
         _handle_chat_with_capabilities(
             tmp_path,
             monkeypatch,
@@ -1021,12 +1020,12 @@ def test_progress_start_and_stop_are_safe_from_several_threads():
         )
         presenter.start_progress()
 
-        def worker():
+        def worker(presenter=presenter):
             try:
                 for _ in range(40):
                     presenter.stop_progress()
                     presenter.resume_progress()
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 errors.append(error)
 
         workers = [threading.Thread(target=worker) for _ in range(6)]

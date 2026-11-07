@@ -216,7 +216,9 @@ produisent un avertissement, pas une erreur fatale.
 ### Tests
 
 ```bash
-python -m pip install pytest
+python -m pip install ".[dev]"                   # pytest + ruff
+python -m ruff check .                             # lint
+python -m ruff format .                            # formatage
 python -m pytest                                   # toute la suite
 python -m pytest tests/test_chat.py::nom_du_test   # un seul test
 ```

@@ -206,7 +206,7 @@ def test_max_iterations_safety():
 
     with pytest.raises(
         MaxToolIterationsError,
-        match="Limite de 2 exécutions d'outils atteinte.",
+        match=r"Limite de 2 exécutions d'outils atteinte\.",
     ):
         graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
 

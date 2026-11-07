@@ -1,0 +1,58 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Projet
+
+IA-CLI (`iacli`) est une CLI Python (>= 3.11) pour discuter avec un modèle open source local via Ollama. Le README et les messages utilisateur sont en français ; garder le français pour les textes affichés et la documentation.
+
+## Méthode de travail
+
+- **TDD (Test Driven Development)** : le projet est développé en TDD. Écrire d'abord un test qui échoue, puis le code minimal pour le faire passer, puis refactorer. Toute nouvelle fonctionnalité ou correction de bug commence par un test.
+- **Architecture hexagonale** : le projet vise à appliquer strictement ce style (ports et adaptateurs). Le domaine et les services ne dépendent jamais de l'infrastructure ni des adapters ; ils ne connaissent que les ports (`Protocol` dans `services/ports.py`). Les dépendances pointent toujours vers l'intérieur, et le câblage ne se fait que dans `cli.py`.
+
+## Commandes
+
+```bash
+python -m pip install .            # installe la commande `iacli` (pas de mode editable documenté)
+python -m pip install ".[dev]"       # pytest + ruff
+python -m ruff check .             # lint (ajouter --fix pour les corrections sûres)
+python -m ruff format .            # formatage
+python -m pytest                   # toute la suite (pythonpath = src via pyproject.toml)
+python -m pytest tests/test_chat.py::nom_du_test   # un seul test
+iacli init                         # wizard : crée ~/.config/iacli/{config.toml,IACLI.md}, télécharge le modèle
+iacli / iacli chat                 # conversation (chat est la commande par défaut)
+```
+
+Ruff (lint + format) est configuré dans `pyproject.toml` ; il n'y a pas de build configuré. Prérequis runtime : Git, ripgrep (`rg`) et Ollama sur `http://localhost:11434`.
+
+## Architecture
+
+Architecture en couches (ports et adaptateurs) sous `src/iacli/` :
+
+- `domain/` : dataclasses de configuration et événements (`InitializationEvent`, `DownloadProgress`…).
+- `services/` : cas d'usage (`initialize.py`, `chat.py`), contrats `Protocol` dans `ports.py`, et le graphe d'agent (`agent_graph.py`). Les services ne dépendent que des ports.
+- `infrastructure/` : implémentations concrètes (client HTTP Ollama, config TOML, vérifications système, `workspace_tools.py` pour les outils lecture/liste/recherche/écriture/shell).
+- `adapters/` : sortie console (`cli_presenter.py`) et interaction de chat (`cli_chat.py`, confirmations, indicateur animé, minuteurs).
+- `cli.py` : racine de composition ; seul endroit qui câble infrastructure, adapters et services (`OllamaClientFactory`, `handle_init`, `handle_chat`). `iacli/ollama.py` n'est qu'un shim de compatibilité vers `infrastructure/ollama.py`.
+
+Flux du chat : `handle_chat` vérifie la config et que le modèle est installé, lit `IACLI.md` (instructions globales injectées dans le contexte), crée un `ChatOllama` (temperature 0) puis appelle `run_chat`. `services/agent_graph.build_control_graph` construit un graphe LangGraph : le modèle (injecté, compatible `bind_tools`) route vers l'exécution des outils, les `ToolMessage` sont réinjectés, et une réponse sans outil passe par un évaluateur avant la fin. Limite par défaut de 25 exécutions d'outils (`max_iterations`).
+
+## Comportements à connaître
+
+- Les chemins des outils de fichiers sont confinés au projet courant (`Path.cwd()`) ; les écritures et commandes shell exigent une confirmation utilisateur avec affichage du diff/de la commande. `run_shell` n'est pas isolé : seul son dossier de départ est le projet (délai max 600 s).
+- `iacli init` s'arrête avant de créer la configuration si Python/Git/ripgrep manque ; les autres problèmes (Ollama injoignable, modèle introuvable, disque insuffisant) sont des avertissements. `iacli chat` refuse au contraire un `config.toml` illisible.
+- `--config-dir` est accepté sur `iacli`, `iacli chat` et `iacli init` (défaut `~/.config/iacli`, y compris sous Windows).
+- Le README est la documentation utilisateur de référence : le mettre à jour avec tout changement de comportement visible (outils, limites, messages, configuration).
+- Un appel d'outil renvoyé en JSON dans le texte du modèle (`{"name":..., "arguments":...}`, éventuellement plusieurs objets) est reconnu pour les outils connus et converti en vrai tool call. Un nom de fichier seul est résolu s'il est unique dans le projet, sinon erreur d'ambiguïté.
+- Lecture/recherche ignorent les fichiers > 1 000 000 octets ; sorties d'outils tronquées à 30 000 caractères ; recherche limitée à 100 correspondances (troncature signalée, pas une erreur).
+- Les durées (modèle, outils, total incluant le temps de confirmation) sont affichées après chaque tour.
+- `OLLAMA_MODELS` définit l'emplacement des modèles pour le calcul d'espace disque.
+
+## Tests
+
+Les tests utilisent des fakes (`tests/fakes.py`, `tests/conftest.py` avec `fake_urlopen` pour le HTTP) plutôt que la vraie CLI ou Ollama. Pour tester un service, injecter des fakes de ports au lieu de patcher l'infrastructure.
+
+## Conventions de commit
+
+Les messages de commit commencent par un gitmoji (ex. `:bug: Fix timer display`, `:wheelchair: Add timers on processes`, `:tada:`).
