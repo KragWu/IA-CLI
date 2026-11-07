@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
-from typing import ParamSpec
+from typing import Any, ParamSpec
 
 from langchain_core.tools import BaseTool, tool
 
@@ -44,7 +44,7 @@ KILL_GRACE_SECONDS = 5
 ToolParameters = ParamSpec("ToolParameters")
 
 
-def _new_process_group_options() -> dict[str, object]:
+def _new_process_group_options() -> dict[str, Any]:
     """Options de `Popen` pour isoler la commande dans son propre groupe de processus,
     afin de pouvoir tuer toute sa descendance."""
     if os.name == "nt":
@@ -107,7 +107,7 @@ def _kill_process_tree(process: subprocess.Popen) -> None:
         )
         return
     with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGKILL)
+        os.killpg(process.pid, signal.SIGKILL)  # type: ignore[attr-defined]
 
 
 def create_workspace_tools(

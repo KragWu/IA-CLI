@@ -50,10 +50,10 @@ class FileConfigurationGateway:
 
         values, warnings = self._load_values(config_path)
         settings = OllamaSettings(
-            base_url=values["base_url"].rstrip("/"),
-            registry_url=values["registry_url"].rstrip("/"),
-            default_model=values["model"],
-            num_ctx=values["num_ctx"],
+            base_url=str(values["base_url"]).rstrip("/"),
+            registry_url=str(values["registry_url"]).rstrip("/"),
+            default_model=str(values["model"]),
+            num_ctx=int(values["num_ctx"]),
         )
         return ConfigurationState(target, settings, tuple(warnings))
 

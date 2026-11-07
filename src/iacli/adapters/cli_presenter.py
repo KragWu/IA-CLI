@@ -39,7 +39,7 @@ class CliPresenter:
         code = event.code
         values = event.values
         if code is InitializationEventCode.STEP:
-            number = values["number"]
+            number = int(values["number"])
             label = self._steps[number]
             suffix = f" ({values['url']})" if "url" in values else ""
             self._output(f"Étape {number}/4 : {label}{suffix}.")
@@ -75,13 +75,13 @@ class CliPresenter:
         elif code is InitializationEventCode.MODEL_FOUND:
             self._output(
                 f"Modèle {values['model']} trouvé dans le registre Ollama "
-                f"({self._format_size(values['size_bytes'])})."
+                f"({self._format_size(int(values['size_bytes']))})."
             )
         elif code is InitializationEventCode.DISK_SPACE_INSUFFICIENT:
             self._output(
                 "Avertissement : espace disque insuffisant pour le modèle "
-                f"{values['model']} ({self._format_size(values['required_bytes'])} requis, "
-                f"{self._format_size(values['available_bytes'])} disponibles)."
+                f"{values['model']} ({self._format_size(int(values['required_bytes']))} requis, "
+                f"{self._format_size(int(values['available_bytes']))} disponibles)."
             )
         elif code is InitializationEventCode.PULL_STARTED:
             self._output(

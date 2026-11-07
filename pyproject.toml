@@ -25,6 +25,7 @@ where = ["src"]
 
 [project.optional-dependencies]
 dev = [
+    "mypy",
     "pytest",
     "ruff",
 ]
@@ -54,3 +55,8 @@ ignore = ["E501"]  # longueur gérée par `ruff format`
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+warn_unused_ignores = false

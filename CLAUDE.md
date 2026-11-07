@@ -15,16 +15,17 @@ IA-CLI (`iacli`) est une CLI Python (>= 3.11) pour discuter avec un modèle open
 
 ```bash
 python -m pip install .            # installe la commande `iacli` (pas de mode editable documenté)
-python -m pip install ".[dev]"       # pytest + ruff
+python -m pip install ".[dev]"       # pytest + ruff + mypy
 python -m ruff check .             # lint (ajouter --fix pour les corrections sûres)
 python -m ruff format .            # formatage
+python -m mypy                     # typage (src)
 python -m pytest                   # toute la suite (pythonpath = src via pyproject.toml)
 python -m pytest tests/test_chat.py::nom_du_test   # un seul test
 iacli init                         # wizard : crée ~/.config/iacli/{config.toml,IACLI.md}, télécharge le modèle
 iacli / iacli chat                 # conversation (chat est la commande par défaut)
 ```
 
-Ruff (lint + format) est configuré dans `pyproject.toml` ; il n'y a pas de build configuré. Prérequis runtime : Git, ripgrep (`rg`) et Ollama sur `http://localhost:11434`.
+Ruff (lint + format) et mypy sont configurés dans `pyproject.toml` ; il n'y a pas de build configuré. Prérequis runtime : Git, ripgrep (`rg`) et Ollama sur `http://localhost:11434`.
 
 ## Architecture
 

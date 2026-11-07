@@ -73,7 +73,7 @@ def run_chat(
     )
     chat_presenter.start(workspace, model_name)
     # Historique conservé en mémoire pour toute la session (jamais écrit sur disque).
-    messages = [
+    messages: list[BaseMessage] = [
         SystemMessage(
             content=(
                 "Tu es un assistant de programmation local. Réponds en français par défaut. "
@@ -169,9 +169,10 @@ def _run_turn(
 
         if not produced_state:
             raise RuntimeError("Le graphe agent n'a produit aucun état.")
-        response = last_messages[-1].content
-        if not isinstance(response, str):
+        content = last_messages[-1].content
+        if not isinstance(content, str):
             raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
+        response = content
     except KeyboardInterrupt:
         failure: Exception | None = RuntimeError("Tour interrompu par l'utilisateur.")
     except EOFError:
@@ -230,6 +231,6 @@ def _present_message(message: BaseMessage, chat_presenter: ChatPresenter) -> Non
         chat_presenter.update_progress(
             f"Résultat de {message.name} reçu; l'agent poursuit"
         )
-        chat_presenter.show_tool_result(message.name)
+        chat_presenter.show_tool_result(message.name or "")
     elif isinstance(message, AIMessage):
         chat_presenter.update_progress("Préparation de la réponse")
