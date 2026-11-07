@@ -165,7 +165,8 @@ def build_control_graph(
         """Aiguillage : vers les outils si le modèle en demande (et que la limite n'est pas dépassée), sinon vers l'évaluateur."""
         if state.get("error"):
             return "evaluator"
-        if state["messages"][-1].tool_calls:
+        last_message = state["messages"][-1]
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "action"
         return "evaluator"
 
