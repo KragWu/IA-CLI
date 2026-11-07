@@ -5,13 +5,14 @@ exigent la confirmation de l'utilisateur. Seuls les chemins des outils de fichie
 confinés au projet : une commande shell, elle, n'est pas isolée.
 """
 
+import contextlib
 import difflib
-from functools import wraps
 import locale
 import os
 import signal
 import subprocess
 from collections.abc import Callable, Iterator
+from functools import wraps
 from pathlib import Path
 from time import perf_counter
 from typing import ParamSpec
@@ -105,10 +106,8 @@ def _kill_process_tree(process: subprocess.Popen) -> None:
             check=False,
         )
         return
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 def create_workspace_tools(

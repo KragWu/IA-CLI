@@ -3,9 +3,9 @@
 import json
 import re
 from collections.abc import Callable, Sequence
+from time import perf_counter
 from typing import Annotated, Any, TypedDict
 from uuid import uuid4
-from time import perf_counter
 
 from langchain_core.messages import AIMessage, AnyMessage
 from langchain_core.tools import BaseTool

@@ -1,9 +1,9 @@
 """Adapter console du chat : invite, affichage, confirmations et indicateur animé."""
 
-from collections.abc import Callable
 import json
-from pathlib import Path
 import sys
+from collections.abc import Callable
+from pathlib import Path
 from threading import Event, Lock, RLock, Thread
 from time import perf_counter
 from typing import TextIO

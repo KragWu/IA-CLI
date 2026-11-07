@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-
 # Fenêtre de contexte demandée à Ollama, en tokens.
 DEFAULT_NUM_CTX = 18000
 

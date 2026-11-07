@@ -3,9 +3,8 @@
 import os
 import platform
 import shutil
-import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 
 class LocalSystemGateway:
@@ -20,8 +19,6 @@ class LocalSystemGateway:
     def prerequisite_warnings(self) -> list[tuple[str, str]]:
         """Liste les prérequis absents du PATH sous forme (nom, conseil d'installation)."""
         warnings: list[tuple[str, str]] = []
-        if sys.version_info < (3, 11):
-            warnings.append(("Python 3.11+", self._install_hint("python")))
         for executable, label in (("git", "Git"), ("rg", "ripgrep")):
             if self._which(executable) is None:
                 warnings.append((label, self._install_hint(executable)))

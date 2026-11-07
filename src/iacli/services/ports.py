@@ -3,9 +3,9 @@
 Les services ne connaissent que ces contrats ; `cli.py` branche les implémentations
 concrètes (infrastructure et adapters)."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Protocol
 
 from langchain_core.tools import BaseTool
 

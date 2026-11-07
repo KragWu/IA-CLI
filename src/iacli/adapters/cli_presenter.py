@@ -1,7 +1,8 @@
 """Adapter console de `iacli init` : met en forme les événements et pose les questions."""
 
 import sys
-from typing import Callable
+from collections.abc import Callable
+from typing import ClassVar
 
 from iacli.domain.events import InitializationEvent, InitializationEventCode
 
@@ -14,7 +15,7 @@ class CliPresenter:
     d'erreur. Les fonctions d'E/S sont injectables.
     """
 
-    _steps = {
+    _steps: ClassVar[dict[int, str]] = {
         1: "vérification des prérequis système",
         2: "création de la configuration globale",
         3: "vérification de la connexion à Ollama",

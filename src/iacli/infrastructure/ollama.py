@@ -2,9 +2,10 @@
 
 import json
 import platform
-from typing import Callable, Mapping
+from collections.abc import Callable, Mapping
 from urllib.parse import quote
-from urllib.request import Request, urlopen as _urlopen
+from urllib.request import Request
+from urllib.request import urlopen as _urlopen
 
 from iacli.domain.events import DownloadProgress
 from iacli.domain.models import ModelInfo

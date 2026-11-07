@@ -6,12 +6,12 @@ import pytest
 
 from iacli.adapters.cli_presenter import CliPresenter
 from iacli.domain.config import OllamaSettings
-from iacli.domain.models import ModelInfo
 from iacli.domain.events import (
     DownloadProgress,
     InitializationEvent,
     InitializationEventCode,
 )
+from iacli.domain.models import ModelInfo
 from iacli.infrastructure.configuration import (
     DEFAULT_INSTRUCTIONS,
     FileConfigurationGateway,
