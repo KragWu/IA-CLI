@@ -1,9 +1,9 @@
 name: CI
 
+# Déclenchement manuel uniquement (les minutes de CI sont facturées).
+# Les vérifications se lancent en local : scripts/check.sh
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   checks:
