@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Installer le projet et les outils de dev
+        run: python -m pip install ".[dev]"
+      - name: Lint
+        run: python -m ruff check .
+      - name: Formatage
+        run: python -m ruff format --check .
+      - name: Typage
+        run: python -m mypy
+      - name: Tests et couverture
+        run: python -m pytest --cov
+
+  audit:
+    name: Audit des dépendances
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install pip-audit .
+      - run: python -m pip_audit
