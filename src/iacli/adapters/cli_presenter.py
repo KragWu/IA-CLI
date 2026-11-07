@@ -1,4 +1,4 @@
-"""Console presenter and prompt adapter."""
+"""Adapter console de `iacli init` : met en forme les événements et pose les questions."""
 
 import sys
 from typing import Callable
@@ -7,6 +7,13 @@ from iacli.domain.events import InitializationEvent, InitializationEventCode
 
 
 class CliPresenter:
+    """Implémente `InitializationPresenter` et affiche avertissements et erreurs de la CLI.
+
+    Les événements d'`init` (avancement comme avertissements) vont sur la sortie standard ;
+    `report_warning`, `report_error` et `report_interruption` écrivent sur la sortie
+    d'erreur. Les fonctions d'E/S sont injectables.
+    """
+
     _steps = {
         1: "vérification des prérequis système",
         2: "création de la configuration globale",
@@ -27,6 +34,7 @@ class CliPresenter:
         )
 
     def present(self, event: InitializationEvent) -> None:
+        """Affiche le message français associé au code de l'événement."""
         code = event.code
         values = event.values
         if code is InitializationEventCode.STEP:
@@ -96,6 +104,7 @@ class CliPresenter:
         self._error_output(f"[iacli] Erreur : {error}")
 
     def confirm_model_download(self, model: str, size_bytes: int) -> bool:
+        """Question `[O/n]` : une réponse vide vaut oui (contrairement aux confirmations du chat)."""
         answer = self._input(
             f"Télécharger le modèle {model} ({self._format_size(size_bytes)}) ? [O/n] "
         ).strip().lower()
@@ -103,6 +112,7 @@ class CliPresenter:
 
     @staticmethod
     def _format_size(size_bytes: int) -> str:
+        """Taille en Gio (à partir de 1 Gio) ou en Mio ; unités binaires (1 Gio = 1024³ octets)."""
         gib = size_bytes / 1024**3
         if gib >= 1:
             return f"{gib:.2f} Gio"

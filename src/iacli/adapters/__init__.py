@@ -1,1 +1,1 @@
-"""User-facing adapters."""
+"""Adapters : entrées/sorties console (affichage, invites, confirmations)."""

@@ -1,10 +1,11 @@
-"""Filesystem-backed configuration gateway."""
+"""Configuration globale stockée dans des fichiers (`config.toml` et `IACLI.md`)."""
 
 import tomllib
 from pathlib import Path
 
 from iacli.domain.config import DEFAULT_NUM_CTX, ConfigurationState, OllamaSettings
 
+# Contenu écrit dans `config.toml` à la première exécution.
 DEFAULT_CONFIG = """[ollama]
 base_url = "http://localhost:11434"
 registry_url = "https://registry.ollama.ai"
@@ -14,6 +15,7 @@ model = "qwen2.5-coder:7b"
 num_ctx = 18000
 """
 
+# Contenu initial de `IACLI.md`, injecté dans l'invite système du chat.
 DEFAULT_INSTRUCTIONS = """# Instructions globales IA-CLI
 
 - Répondre en français par défaut, sauf demande contraire.
@@ -21,6 +23,7 @@ DEFAULT_INSTRUCTIONS = """# Instructions globales IA-CLI
 - Respecter les conventions du projet en cours.
 """
 
+# Valeurs par défaut des clés textuelles de [ollama] ; `num_ctx` est géré à part.
 _DEFAULT_OLLAMA = {
     "base_url": "http://localhost:11434",
     "registry_url": "https://registry.ollama.ai",
@@ -29,7 +32,13 @@ _DEFAULT_OLLAMA = {
 
 
 class FileConfigurationGateway:
+    """Lit et initialise la configuration dans `~/.config/iacli` (ou le dossier fourni)."""
+
     def ensure_configuration(self, directory: Path | None = None) -> ConfigurationState:
+        """Crée dossier et fichiers manquants sans jamais écraser l'existant, puis charge `config.toml`.
+
+        Un fichier invalide ne lève pas d'exception : les valeurs par défaut sont
+        utilisées et la cause est indiquée dans `ConfigurationState.warnings`."""
         target = directory or Path.home() / ".config" / "iacli"
         target.mkdir(parents=True, exist_ok=True)
         config_path = target / "config.toml"
@@ -50,6 +59,9 @@ class FileConfigurationGateway:
 
     @staticmethod
     def _load_values(config_path: Path) -> tuple[dict[str, str | int], list[str]]:
+        """Valide la section [ollama] ; renvoie (valeurs, avertissements).
+
+        À la première erreur, toutes les valeurs par défaut sont renvoyées avec le message d'erreur."""
         try:
             with config_path.open("rb") as config_file:
                 document = tomllib.load(config_file)

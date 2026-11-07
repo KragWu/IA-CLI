@@ -1,4 +1,4 @@
-"""Interactive chat use case backed by the LangGraph control flow."""
+"""Cas d'usage du chat interactif, piloté par le graphe LangGraph de `agent_graph`."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,12 +11,17 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
 
+# Nombre maximal d'exécutions d'outils par tour avant d'abandonner (évite les boucles).
 MAX_TOOL_ITERATIONS = 25
 # Part de la fenêtre de contexte à partir de laquelle l'utilisateur est alerté.
 CONTEXT_WARNING_RATIO = 0.8
 
 
 def evaluate_response(state: AgentState) -> bool:
+    """Évaluateur de fin de tour : accepte la réponse ou lève une exception.
+
+    Refuse un dernier message qui n'est pas de l'assistant, qui garde des appels
+    d'outils en attente ou dont le contenu est vide."""
     response = state["messages"][-1]
     if not isinstance(response, AIMessage):
         raise TypeError("Le modèle n'a pas terminé par un message assistant.")
@@ -37,6 +42,14 @@ def run_chat(
     tools_factory: ToolsFactory,
     context_limit: int | None = None,
 ) -> None:
+    """Boucle de conversation : un tour du graphe par saisie utilisateur.
+
+    `model` doit supporter `bind_tools` (ex. `ChatOllama`). `workspace` est le projet
+    courant, `instructions` le contenu d'`IACLI.md` ajouté à l'invite système et
+    `context_limit` la fenêtre de contexte en tokens (None : pas d'affichage).
+    La boucle s'arrête sur `/exit`, `/quit`, une fin de fichier ou Ctrl+C à l'invite ;
+    une erreur pendant un tour est affichée sans fermer la session.
+    """
     chat_presenter = presenter
     tools = tools_factory(
         workspace,
@@ -54,6 +67,7 @@ def run_chat(
         ),
     )
     chat_presenter.start(workspace, model_name)
+    # Historique conservé en mémoire pour toute la session (jamais écrit sur disque).
     messages = [
         SystemMessage(
             content=(
@@ -119,6 +133,11 @@ def _run_turn(
     chat_presenter: ChatPresenter,
     request_started: float,
 ) -> _TurnOutcome:
+    """Exécute un tour (une demande de l'utilisateur) et en renvoie le résultat.
+
+    Les messages produits sont présentés au fil de l'eau. Toute erreur, Ctrl+C ou
+    fermeture de l'entrée est capturée dans `_TurnOutcome.error` pour que la session continue.
+    """
     turn_input = [*messages, HumanMessage(content=user_input)]
     last_messages = turn_input
     produced_state = False
@@ -192,6 +211,7 @@ def _without_incomplete_tail(
 
 
 def _present_message(message: BaseMessage, chat_presenter: ChatPresenter) -> None:
+    """Traduit un message du graphe en mise à jour de progression et en lignes d'outils."""
     if isinstance(message, AIMessage) and message.tool_calls:
         tool_names = ", ".join(tool_call["name"] for tool_call in message.tool_calls)
         chat_presenter.update_progress(f"Appel des outils : {tool_names}")

@@ -1,4 +1,4 @@
-"""Operating-system and disk gateways."""
+"""Informations sur le système d'exploitation et le disque."""
 
 import os
 import platform
@@ -9,6 +9,8 @@ from typing import Callable
 
 
 class LocalSystemGateway:
+    """Vérifie les prérequis de la machine locale (Python, Git, ripgrep) et l'espace disque."""
+
     def __init__(
         self,
         which: Callable[[str], str | None] | None = None,
@@ -16,6 +18,7 @@ class LocalSystemGateway:
         self._which = which or shutil.which
 
     def prerequisite_warnings(self) -> list[tuple[str, str]]:
+        """Liste les prérequis absents du PATH sous forme (nom, conseil d'installation)."""
         warnings: list[tuple[str, str]] = []
         if sys.version_info < (3, 11):
             warnings.append(("Python 3.11+", self._install_hint("python")))
@@ -25,6 +28,9 @@ class LocalSystemGateway:
         return warnings
 
     def available_model_disk_bytes(self) -> int:
+        """Espace libre là où Ollama stocke ses modèles : `OLLAMA_MODELS`, sinon `~/.ollama/models`.
+
+        Si le dossier n'existe pas encore, on mesure son plus proche parent existant."""
         models_directory = Path(
             os.environ.get(
                 "OLLAMA_MODELS",
@@ -38,6 +44,7 @@ class LocalSystemGateway:
 
     @staticmethod
     def _install_hint(executable: str) -> str:
+        """Conseil d'installation affiché à l'utilisateur, adapté à son système (Windows, macOS, Linux)."""
         system_name = platform.system().lower()
         if "windows" in system_name:
             hints = {

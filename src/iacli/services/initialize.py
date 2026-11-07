@@ -1,4 +1,4 @@
-"""Initialization application use case."""
+"""Cas d'usage `iacli init` : prérequis, configuration, connexion Ollama et modèle."""
 
 from pathlib import Path
 
@@ -17,6 +17,12 @@ from iacli.services.ports import (
 
 
 class InitializeApplication:
+    """Orchestre `iacli init` en émettant des `InitializationEvent` au présentateur.
+
+    Les problèmes rencontrés (Ollama injoignable, modèle introuvable, disque plein,
+    échec du téléchargement) sont signalés par des événements d'avertissement et
+    n'interrompent pas la commande ; seul un prérequis manquant l'arrête."""
+
     def __init__(
         self,
         configuration: ConfigurationGateway,
@@ -30,6 +36,7 @@ class InitializeApplication:
         self._presenter = presenter
 
     def execute(self, config_directory: Path | None = None) -> None:
+        """Déroule les quatre étapes ; un prérequis manquant arrête avant toute création de fichier."""
         self._emit(InitializationEventCode.STEP, number=1)
         for dependency, hint in self._system.prerequisite_warnings():
             self._emit(
@@ -77,6 +84,8 @@ class InitializeApplication:
         model: str,
         installed_models: set[str],
     ) -> None:
+        """Étape 4 : installe le modèle s'il est absent, après contrôle du registre,
+        de l'espace disque et accord de l'utilisateur."""
         self._emit(InitializationEventCode.OLLAMA_CONNECTED)
         self._emit(InitializationEventCode.STEP, number=4)
         if model in installed_models:

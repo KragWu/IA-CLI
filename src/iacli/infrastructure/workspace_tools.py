@@ -1,4 +1,9 @@
-"""User-approved tools for interacting with the current project workspace."""
+"""Outils de l'agent pour travailler dans le projet courant.
+
+Lecture, liste et recherche sont libres ; l'écriture de fichier et la commande shell
+exigent la confirmation de l'utilisateur. Seuls les chemins des outils de fichiers sont
+confinés au projet : une commande shell, elle, n'est pas isolée.
+"""
 
 import difflib
 from functools import wraps
@@ -13,6 +18,7 @@ from typing import ParamSpec
 
 from langchain_core.tools import BaseTool, tool
 
+# Dossiers jamais parcourus par la liste, la recherche et la résolution d'un nom de fichier.
 IGNORED_DIRECTORIES = {
     ".git",
     ".pytest_cache",
@@ -23,18 +29,23 @@ IGNORED_DIRECTORIES = {
     "node_modules",
     "venv",
 }
-# Bound per-file reads and search scans to avoid feeding huge files to the model.
+# Taille maximale (en octets) d'un fichier lu, parcouru ou écrit : évite de donner
+# d'énormes fichiers au modèle.
 MAX_FILE_BYTES = 1_000_000
-# Bound tool results (including shell output and diffs) sent back into the conversation.
+# Taille maximale (en caractères) d'un résultat d'outil, sortie shell et diff compris,
+# renvoyé dans la conversation.
 MAX_TOOL_OUTPUT_CHARS = 30_000
 
+# Durée maximale (en secondes) d'une commande shell avant son arrêt forcé.
 MAX_TIME_FOR_SUBPROCESS = 600
-# Time allowed to collect output once a timed-out process tree has been killed.
+# Délai (en secondes) pour récupérer la sortie une fois l'arbre de processus arrêté.
 KILL_GRACE_SECONDS = 5
 ToolParameters = ParamSpec("ToolParameters")
 
 
 def _new_process_group_options() -> dict[str, object]:
+    """Options de `Popen` pour isoler la commande dans son propre groupe de processus,
+    afin de pouvoir tuer toute sa descendance."""
     if os.name == "nt":
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
     return {"start_new_session": True}
@@ -60,10 +71,12 @@ def _decode_output(data: bytes) -> str:
         return data.decode(_console_encoding(), errors="replace")
 
 
+# Ajouté à la fin d'un flux de sortie shell tronqué.
 SHELL_TRUNCATION_MARKER = "\n[sortie tronquée]\n"
 
 
 def _truncate(text: str, budget: int) -> str:
+    """Garde le début de `text` pour tenir dans `budget` caractères, marqueur de troncature compris."""
     if len(text) <= budget:
         return text
     return text[: max(budget - len(SHELL_TRUNCATION_MARKER), 0)] + SHELL_TRUNCATION_MARKER
@@ -82,7 +95,7 @@ def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
 
 
 def _kill_process_tree(process: subprocess.Popen) -> None:
-    """Kill a shell and every process it started, not only the shell itself."""
+    """Arrête le shell et tous les processus qu'il a lancés, pas seulement le shell."""
     if os.name == "nt":
         subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(process.pid)],
@@ -102,6 +115,12 @@ def create_workspace_tools(
     confirm_shell_command: Callable[[str, Path], bool],
     on_action_timing: Callable[[str, float], None] | None = None,
 ) -> list[BaseTool]:
+    """Crée les cinq outils (`read_file`, `list_files`, `search_files`, `write_file`, `run_shell`).
+
+    `confirm_file_write(chemin, diff)` et `confirm_shell_command(commande, dossier)`
+    renvoient True si l'utilisateur accepte. `on_action_timing(outil, secondes)` est
+    appelé après chaque outil. Une erreur levée par un outil est renvoyée au modèle.
+    """
     root = workspace.resolve()
 
     def measure_action(
@@ -130,16 +149,18 @@ def create_workspace_tools(
         return decorator
 
     def resolve_path(path: str) -> Path:
+        """Chemin absolu de `path` (relatif au projet) ; `ValueError` s'il sort du projet (`..`, lien symbolique…)."""
         candidate = (root / path).resolve()
         if not candidate.is_relative_to(root):
             raise ValueError(f"Le chemin doit rester dans le projet : {path}")
         return candidate
 
     def iter_files(directory: Path) -> Iterator[Path]:
+        """Fichiers de `directory`, triés, hors dossiers ignorés et liens symboliques."""
         if any(part in IGNORED_DIRECTORIES for part in directory.relative_to(root).parts):
             return
         for current, dirnames, filenames in os.walk(directory):
-            # Prune in place so ignored trees (.git, node_modules...) are never read.
+            # Élagage sur place : les arbres ignorés (.git, node_modules…) ne sont jamais parcourus.
             dirnames[:] = sorted(
                 name for name in dirnames if name not in IGNORED_DIRECTORIES
             )
@@ -151,7 +172,7 @@ def create_workspace_tools(
     @tool
     @measure_action("read_file")
     def read_file(path: str) -> str:
-        """Lire le contenu d'un fichier du projet."""
+        """Lire le contenu d'un fichier texte (UTF-8) du projet."""
         file_path = resolve_path(path)
         if file_path.is_dir():
             raise IsADirectoryError(
@@ -325,7 +346,9 @@ def create_workspace_tools(
     @tool
     @measure_action("run_shell")
     def run_shell(command: str) -> str:
-        """Exécuter une commande shell dans le projet après confirmation utilisateur."""
+        """Exécuter une commande shell dans le projet après confirmation utilisateur.
+
+        La réponse commence par le code de sortie. La commande n'est pas isolée du système."""
         if not command.strip():
             raise ValueError("La commande shell ne peut pas être vide.")
         if not confirm_shell_command(command, root):

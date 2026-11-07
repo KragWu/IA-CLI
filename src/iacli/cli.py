@@ -17,6 +17,8 @@ from iacli.services.ports import OllamaGateway
 
 
 class OllamaClientFactory:
+    """Fabrique d'`OllamaClient` à partir des réglages de `config.toml`."""
+
     def create(self, settings: OllamaSettings) -> OllamaGateway:
         return OllamaClient(
             base_url=settings.base_url,
@@ -25,7 +27,7 @@ class OllamaClientFactory:
 
 
 def handle_init(args: argparse.Namespace) -> None:
-    """Gestionnaire de la sous-commande init."""
+    """Gestionnaire de la sous-commande init : câble le cas d'usage et l'exécute."""
     use_case = InitializeApplication(
         configuration=FileConfigurationGateway(),
         system=LocalSystemGateway(),
@@ -36,7 +38,12 @@ def handle_init(args: argparse.Namespace) -> None:
 
 
 def handle_chat(args: argparse.Namespace) -> None:
-    """Lance une conversation avec le modèle configuré."""
+    """Lance une conversation avec le modèle configuré.
+
+    Refuse de démarrer (exception affichée par `main`) si `config.toml` est illisible,
+    si le modèle n'est pas installé ou s'il ne gère pas les outils. Un `num_ctx`
+    supérieur au contexte maximal du modèle est plafonné avec un avertissement.
+    """
     from langchain_ollama import ChatOllama
 
     configuration = FileConfigurationGateway().ensure_configuration(args.config_dir)
@@ -139,7 +146,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """Exécute la CLI et retourne le code de statut système."""
+    """Exécute la CLI et retourne le code de sortie : 0 succès, 1 erreur, 130 interruption (Ctrl+C).
+
+    Sans sous-commande, la conversation (`chat`) est lancée.
+    """
     parser = build_parser()
     args = parser.parse_args()
 
