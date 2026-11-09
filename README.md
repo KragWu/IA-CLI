@@ -135,16 +135,18 @@ Détails de fonctionnement :
   de *tool calling*. IA-CLI reconnaît ce format pour les outils connus et le traite comme un véritable appel d'outil.
   Le format à balises `<tool_call>{"name":"outil","arguments":{...}}</tool_call>` est aussi reconnu ; un outil inconnu
   y reçoit la réponse d'erreur habituelle, et un `arguments` absent vaut `{}` (outil sans paramètre). Une balise n'est
-  considérée comme un appel que si du JSON la suit : une simple mention de `<tool_call>` dans une phrase reste du texte
-  (limite connue : un exemple de format avec du JSON invalide, comme `<tool_call>{"name": ...}</tool_call>`, est lu
-  comme un appel raté). Un appel illisible (JSON invalide, balise non refermée, `name` absent, `arguments` qui n'est
+  considérée comme un appel que si du JSON la suit : une simple mention de `<tool_call>` dans une phrase reste du texte.
+  Une balise citée dans du code markdown (bloc ```` ``` ```` ou extrait entre backticks) est un exemple, pas un appel :
+  elle n'est ni exécutée ni signalée comme illisible (un modèle qui entourerait son vrai appel d'un bloc de code ne
+  serait donc pas reconnu). Un appel illisible (JSON invalide, balise non refermée, `name` absent, `arguments` qui n'est
   pas un objet) n'est pas affiché comme réponse : l'erreur est renvoyée au modèle pour qu'il corrige son appel. Après
   3 tentatives illisibles consécutives, le tour s'arrête avec une erreur ; ces tentatives ne comptent pas dans la
   limite d'exécutions d'outils. Les appels illisibles et les corrections demandées au modèle sont retirés de
   l'historique en fin de tour, qu'il réussisse ou échoue. Si la réponse a été coupée par la limite de tokens
   (`done_reason` = `length`) au milieu d'un appel, le modèle est invité à faire un appel plus court (par exemple
-  découper un gros `write_file`) ; après 3 coupures consécutives, l'erreur affichée suggère d'augmenter `num_ctx`
-  dans `config.toml` ou de demander une action plus petite. La coupure est aussi détectée juste après la balise
+  découper un gros `write_file`) ; si les 3 tentatives consécutives ont toutes été coupées, l'erreur affichée suggère
+  d'augmenter `num_ctx` dans `config.toml` ou de demander une action plus petite (une série mêlant erreurs de syntaxe
+  et coupures donne le message générique). La coupure est aussi détectée juste après la balise
   ouvrante `<tool_call>`. Une réponse finale en prose coupée n'est pas détectée.
 - **Limite d'exécutions** : un tour s'arrête avec une erreur après 25 exécutions d'outils consécutives.
 
