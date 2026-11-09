@@ -497,3 +497,21 @@ def test_repeated_truncated_tool_calls_end_with_a_token_limit_error():
 
     assert "num_ctx" in str(error.value)
     assert len(model.calls) == 3
+
+
+def test_tool_call_cut_right_after_the_opening_tag_is_not_a_final_answer():
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content="<tool_call>", response_metadata={"done_reason": "length"}
+            ),
+            AIMessage(content="Terminé."),
+        ]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert is_tool_call_feedback(model.calls[1][-1])
+    assert "limite de tokens" in model.calls[1][-1].content
+    assert result["messages"][-1].content == "Terminé."

@@ -223,3 +223,35 @@ def test_wrong_structure_is_not_blamed_on_truncation():
 
     assert isinstance(result, MalformedToolCall)
     assert not result.truncated
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "<tool_call>",
+        "<tool_call>\n  ",
+        "Je lis le fichier. <tool_call>",
+        '<tool_call>{"name": "list_files", "arguments": {}}</tool_call>\n<tool_call>',
+    ],
+)
+def test_tool_call_cut_right_after_the_opening_tag_is_reported_as_truncated(content):
+    result = _normalize(content, done_reason="length")
+
+    assert isinstance(result, MalformedToolCall)
+    assert result.truncated
+    assert "limite de tokens" in result.error
+
+
+def test_lone_opening_tag_without_truncation_stays_plain_text():
+    answer = AIMessage(content="Voici la balise : <tool_call>")
+
+    assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+def test_prose_after_the_tag_is_not_blamed_on_truncation():
+    answer = AIMessage(
+        content="La balise <tool_call> sert à appeler un outil.",
+        response_metadata={"done_reason": "length"},
+    )
+
+    assert normalize_text_tool_call(answer, TOOLS) is answer
