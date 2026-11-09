@@ -19,13 +19,14 @@ class AgentState(TypedDict, total=False):
     `messages` : historique (les nouveaux messages sont ajoutés, pas remplacés) ;
     `tool_iterations` : exécutions d'outils déjà faites pendant ce tour ;
     `evaluation` : résultat de l'évaluateur ; `error` : motif d'arrêt anticipé ;
-    `retry` : le dernier appel d'outil était illisible, le modèle doit le corriger."""
+    `malformed_streak` : appels d'outil illisibles consécutifs (0 si le dernier
+    appel du modèle était lisible) ; le modèle doit alors corriger son appel."""
 
     messages: Annotated[list[AnyMessage], add_messages]
     tool_iterations: int
     evaluation: object
     error: str
-    retry: bool
+    malformed_streak: int
 
 
 Evaluator = Callable[[AgentState], object]
@@ -46,12 +47,17 @@ class MaxToolIterationsError(RuntimeError):
     """Levée quand le modèle demande encore un outil alors que la limite d'exécutions est atteinte."""
 
 
+class MalformedToolCallsError(RuntimeError):
+    """Levée quand le modèle n'arrive pas à corriger ses appels d'outil illisibles."""
+
+
 def build_control_graph(
     model: Any,
     tools: Sequence[BaseTool],
     evaluator: Evaluator,
     *,
     max_iterations: int = 25,
+    max_malformed_retries: int = 3,
     on_agent_timing: AgentTimingCallback | None = None,
 ):
     """Construit un graphe qui alterne entre le modèle (nœud `agent`) et ses outils (nœud `action`).
@@ -59,11 +65,16 @@ def build_control_graph(
     `model` doit fournir `bind_tools` et `invoke`. Quand le modèle répond sans appel
     d'outil, le nœud `evaluator` appelle `evaluator(state)` : une exception de sa part
     fait échouer le tour. Au-delà de `max_iterations` exécutions d'outils, la
-    demande suivante d'outil arrête le tour avec `MaxToolIterationsError`.
+    demande suivante d'outil arrête le tour avec `MaxToolIterationsError`. Un appel
+    d'outil illisible est renvoyé au modèle pour correction, sans compter parmi les
+    exécutions ; après `max_malformed_retries` réessais consécutifs, le tour s'arrête
+    avec `MalformedToolCallsError`.
     `on_agent_timing` reçoit la durée (en secondes) de chaque appel au modèle.
     """
     if max_iterations < 1:
         raise ValueError("max_iterations doit être supérieur ou égal à 1.")
+    if max_malformed_retries < 1:
+        raise ValueError("max_malformed_retries doit être supérieur ou égal à 1.")
 
     agent_model = model.bind_tools(tools)
     action_node = ToolNode(tools, handle_tool_errors=format_tool_error)
@@ -81,21 +92,24 @@ def build_control_graph(
         limit_error = f"Limite de {max_iterations} exécutions d'outils atteinte."
 
         if isinstance(response, MalformedToolCall):
-            # Le modèle voit son appel raté et l'erreur, puis réessaie (borné comme
-            # une exécution d'outil, pour ne pas boucler indéfiniment).
+            # Le modèle voit son appel raté et l'erreur, puis réessaie (borné par
+            # `max_malformed_retries` pour ne pas boucler indéfiniment).
+            streak = state.get("malformed_streak", 0) + 1
             updates: dict[str, Any] = {
                 "messages": [raw_response, HumanMessage(content=response.error)],
-                "tool_iterations": iterations + 1,
-                "retry": True,
+                "tool_iterations": iterations,
+                "malformed_streak": streak,
             }
-            if iterations >= max_iterations:
-                updates["error"] = limit_error
+            if streak > max_malformed_retries:
+                updates["error"] = (
+                    f"Le modèle a produit {streak} appels d'outil illisibles de suite."
+                )
             return updates
 
         updates = {
             "messages": [response],
             "tool_iterations": iterations,
-            "retry": False,
+            "malformed_streak": 0,
         }
         if (
             isinstance(response, AIMessage)
@@ -109,7 +123,7 @@ def build_control_graph(
         """Aiguillage : vers les outils si le modèle en demande (et que la limite n'est pas dépassée), sinon vers l'évaluateur."""
         if state.get("error"):
             return "evaluator"
-        if state.get("retry"):
+        if state.get("malformed_streak"):
             return "agent"
         last_message = state["messages"][-1]
         if isinstance(last_message, AIMessage) and last_message.tool_calls:
@@ -125,6 +139,8 @@ def build_control_graph(
 
     def evaluate(state: AgentState) -> dict[str, Any]:
         if error := state.get("error"):
+            if state.get("malformed_streak", 0) > max_malformed_retries:
+                raise MalformedToolCallsError(error)
             raise MaxToolIterationsError(error)
         return {"evaluation": evaluator(state)}
 
