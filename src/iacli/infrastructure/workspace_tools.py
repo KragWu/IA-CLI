@@ -121,12 +121,19 @@ def _digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+# Empreinte d'un chemin qui existe mais ne peut pas être lu (devenu un dossier, verrouillé…) :
+# jamais égale à celle d'un contenu, donc l'écriture est annulée.
+_UNREADABLE_DIGEST = "illisible"
+
+
 def _file_digest(file_path: Path) -> str:
     """Empreinte du contenu actuel de `file_path`, vide s'il n'existe pas."""
     try:
         return _digest(file_path.read_bytes())
     except FileNotFoundError:
         return ""
+    except OSError:
+        return _UNREADABLE_DIGEST
 
 
 def _parse_text(raw_content: str) -> _TextFile:
