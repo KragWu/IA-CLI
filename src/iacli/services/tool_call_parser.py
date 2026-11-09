@@ -6,6 +6,7 @@ Certains petits modèles locaux n'utilisent pas le tool calling natif d'Ollama e
 import json
 import re
 from collections.abc import Collection
+from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from langchain_core.messages import AIMessage
 _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 # Format Hermes/Qwen : <tool_call>{"name": ..., "arguments": {...}}</tool_call>.
+_TOOL_CALL_OPEN = "<tool_call>"
 _TOOL_CALL_TAG = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
 
 
@@ -22,25 +24,53 @@ def _make_tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     return {"name": name, "args": arguments, "id": str(uuid4()), "type": "tool_call"}
 
 
-def _parse_tagged_tool_calls(text: str) -> list[dict[str, Any]] | None:
-    """Renvoie les tool calls des balises `<tool_call>` de `text`, None s'il n'y en a
-    pas ou si l'une est invalide. Le nom n'est pas confronté aux outils connus :
-    `ToolNode` renverra lui-même une erreur au modèle pour un outil inconnu."""
-    bodies = _TOOL_CALL_TAG.findall(text)
-    if not bodies:
+_TAG_EXPECTED_FORMAT = (
+    'Renvoie un JSON valide de la forme {"name": "<outil>", "arguments": {...}} '
+    "entre <tool_call> et </tool_call>."
+)
+
+
+@dataclass(frozen=True)
+class MalformedToolCall:
+    """Appel d'outil manifestement raté (balise `<tool_call>` illisible).
+
+    `error` est un message destiné au modèle pour qu'il corrige son appel."""
+
+    error: str
+
+
+def _malformed(reason: str) -> MalformedToolCall:
+    return MalformedToolCall(
+        f"Ton appel d'outil <tool_call> est invalide : {reason} {_TAG_EXPECTED_FORMAT}"
+    )
+
+
+def _parse_tagged_tool_calls(
+    text: str,
+) -> list[dict[str, Any]] | MalformedToolCall | None:
+    """Renvoie les tool calls des balises `<tool_call>` de `text`, un `MalformedToolCall`
+    si l'une est invalide, None s'il n'y en a aucune. Le nom n'est pas confronté aux
+    outils connus : `ToolNode` renverra lui-même une erreur au modèle pour un outil
+    inconnu."""
+    if _TOOL_CALL_OPEN not in text:
         return None
+    bodies = _TOOL_CALL_TAG.findall(text)
+    if text.count(_TOOL_CALL_OPEN) != len(bodies):
+        return _malformed("une balise <tool_call> n'est pas refermée par </tool_call>.")
     calls = []
     for body in bodies:
         try:
             payload = json.loads(body)
-        except json.JSONDecodeError:
-            return None
+        except json.JSONDecodeError as error:
+            return _malformed(f"JSON illisible ({error}).")
         if not isinstance(payload, dict):
-            return None
+            return _malformed('le JSON doit être un objet avec "name" et "arguments".')
         name = payload.get("name")
         arguments = payload.get("arguments", {})
-        if not isinstance(name, str) or not isinstance(arguments, dict):
-            return None
+        if not isinstance(name, str):
+            return _malformed('le champ "name" (texte) est obligatoire.')
+        if not isinstance(arguments, dict):
+            return _malformed('le champ "arguments" doit être un objet JSON.')
         calls.append(_make_tool_call(name, arguments))
     return calls
 
@@ -84,14 +114,19 @@ def parse_tool_calls(
 
 
 def normalize_text_tool_call(response: Any, tool_names: Collection[str]) -> Any:
-    """Convertit un appel d'outil écrit en JSON dans le texte (brut ou dans un bloc
-    ```json) en vrai tool call ; sinon renvoie la réponse inchangée."""
+    """Convertit un appel d'outil écrit dans le texte (JSON brut, bloc ```json ou balises
+    <tool_call>) en vrai tool call ; sinon renvoie la réponse inchangée.
+
+    Une balise `<tool_call>` illisible donne un `MalformedToolCall` : le texte brut ne
+    doit pas devenir la réponse finale. Un JSON invalide hors balise reste du texte."""
     if not isinstance(response, AIMessage) or response.tool_calls:
         return response
     if not isinstance(response.content, str):
         return response
     content = response.content
     calls = _parse_tagged_tool_calls(content)
+    if isinstance(calls, MalformedToolCall):
+        return calls
     if calls is None:
         calls = parse_tool_calls(content, tool_names)
     if calls is None:

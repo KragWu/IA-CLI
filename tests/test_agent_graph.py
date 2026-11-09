@@ -347,3 +347,48 @@ def test_graph_reports_unknown_tool_in_tag_to_the_model():
     assert "inconnu" in tool_message.content
     assert tool_message.status == "error"
     assert result["messages"][-1].content == "Je me corrige."
+
+
+def test_malformed_tool_call_handling_asks_the_model_to_fix_its_call():
+    broken = AIMessage(content='<tool_call>{"name": "read_file", </tool_call>')
+    model = FakeChatModel(
+        [
+            broken,
+            AIMessage(
+                content=(
+                    '<tool_call>{"name": "read_file", '
+                    '"arguments": {"path": "README.md"}}</tool_call>'
+                )
+            ),
+            AIMessage(content="Fichier lu."),
+        ]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    feedback = model.calls[1][-1]
+    assert isinstance(feedback, HumanMessage)
+    assert "JSON" in feedback.content
+    assert model.calls[1][-2].content == broken.content
+    assert [
+        message.content
+        for message in result["messages"]
+        if isinstance(message, ToolMessage)
+    ] == ["contents of README.md"]
+    assert result["messages"][-1].content == "Fichier lu."
+    assert result["tool_iterations"] == 2
+
+
+def test_malformed_tool_call_loop_is_stopped_by_the_iteration_limit():
+    model = FakeChatModel(
+        [AIMessage(content="<tool_call>{oups</tool_call>") for _ in range(5)]
+    )
+    graph = build_control_graph(
+        model, [read_file], lambda _state: True, max_iterations=2
+    )
+
+    with pytest.raises(MaxToolIterationsError):
+        graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert len(model.calls) == 3
