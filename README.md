@@ -108,7 +108,8 @@ Détails de fonctionnement :
   bloc introuvable, présent plusieurs fois, vide ou identique à `new_string` est une erreur renvoyée au modèle, et le
   fichier reste intact. Les fins de ligne sont comparées en LF ; celles du fichier (LF ou CRLF) sont conservées.
   `edit_file` ne crée pas de fichier (utiliser `write_file`) et refuse un fichier aux fins de ligne mixtes (CRLF et LF),
-  pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier.
+  pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier, y compris avec le même
+  texte, ce qui normalise ses fins de ligne en CRLF après confirmation.
 - **Diff** : une dernière ligne sans retour à la ligne est signalée par
   `\ Pas de retour à la ligne à la fin du fichier`, pour que l'ajout ou le retrait de ce retour soit visible.
 - **Limites de taille** : `read_file`, `search_files`, `write_file` et `edit_file` ignorent ou refusent les fichiers de plus de
