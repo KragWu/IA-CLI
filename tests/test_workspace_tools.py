@@ -326,6 +326,24 @@ def test_edit_file_ambiguous_match_failure(tmp_path):
     assert confirmations == []
 
 
+def test_edit_file_counts_overlapping_matches_as_ambiguous(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"aaa")
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    with pytest.raises(ValueError, match="2 fois"):
+        tools["edit_file"].invoke(
+            {"path": "main.py", "old_string": "aa", "new_string": "b"}
+        )
+
+    assert target.read_bytes() == b"aaa"
+    assert confirmations == []
+
+
 def test_edit_file_missing_match_failure(tmp_path):
     target = tmp_path / "main.py"
     target.write_bytes(b"a\nb\n")

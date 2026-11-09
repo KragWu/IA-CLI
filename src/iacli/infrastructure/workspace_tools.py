@@ -97,6 +97,17 @@ def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
     return header + stdout_part + stderr_part
 
 
+def _count_occurrences(text: str, block: str) -> int:
+    """Nombre d'occurrences de `block` dans `text`, chevauchements compris (`str.count`
+    les ignore : « aa » compte une fois dans « aaa » alors qu'il y est à deux endroits)."""
+    count = 0
+    position = text.find(block)
+    while position != -1:
+        count += 1
+        position = text.find(block, position + 1)
+    return count
+
+
 def _kill_process_tree(process: subprocess.Popen) -> None:
     """Arrête le shell et tous les processus qu'il a lancés, pas seulement le shell."""
     if os.name == "nt":
@@ -406,7 +417,7 @@ def create_workspace_tools(
             )
         previous = raw_content.replace("\r\n", "\n")
         old_block = old_string.replace("\r\n", "\n")
-        occurrences = previous.count(old_block)
+        occurrences = _count_occurrences(previous, old_block)
         if occurrences == 0:
             raise ValueError(
                 f"old_string introuvable dans {path} : il doit correspondre "
