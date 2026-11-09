@@ -20,7 +20,10 @@ from iacli.domain.config import (
 from iacli.domain.models import ModelInfo
 from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.services.chat import _without_incomplete_tail, run_chat
-from iacli.services.tool_call_parser import make_tool_call_feedback
+from iacli.services.tool_call_parser import (
+    is_tool_call_feedback,
+    make_tool_call_feedback,
+)
 from tests.fakes import FakeChatModel
 
 
@@ -720,6 +723,62 @@ def test_incomplete_tail_keeps_feedback_that_does_not_answer_a_broken_reply():
     kept = _without_incomplete_tail(history, turn_start=0)
 
     assert kept == history
+
+
+def test_successful_retry_does_not_leave_malformed_exchange_in_history(tmp_path):
+    (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
+    broken = "<tool_call>{oups</tool_call>"
+    valid = (
+        '<tool_call>{"name": "read_file", "arguments": {"path": "README.md"}}'
+        "</tool_call>"
+    )
+
+    class BrokenThenValid(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(content=broken)
+            if len(self.calls) == 2:
+                return AIMessage(content=valid)
+            return AIMessage(
+                content=f"Réponse {len(self.calls)}",
+                usage_metadata={
+                    "input_tokens": 90,
+                    "output_tokens": 10,
+                    "total_tokens": 100,
+                },
+            )
+
+    model = BrokenThenValid()
+    prompts = iter(("première demande", "demande suivante", "/exit"))
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+        context_limit=1000,
+    )
+
+    next_turn = model.calls[3]
+    assert not any(message.content == broken for message in next_turn)
+    assert not any(is_tool_call_feedback(message) for message in next_turn)
+    assert any(
+        isinstance(message, ToolMessage) and message.content == "readme contents"
+        for message in next_turn
+    )
+    assert any(
+        isinstance(message, AIMessage) and message.content == "Réponse 3"
+        for message in next_turn
+    )
+    assert sum(line.startswith("contexte> 100 / 1 000") for line in output) == 2
 
 
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
