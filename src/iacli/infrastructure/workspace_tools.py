@@ -10,11 +10,13 @@ import difflib
 import hashlib
 import locale
 import os
+import re
 import signal
 import subprocess
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
+from itertools import islice
 from pathlib import Path
 from time import perf_counter
 from typing import Any, ParamSpec
@@ -101,9 +103,11 @@ def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
 
 @dataclass(frozen=True)
 class _TextFile:
-    """Texte d'un fichier normalisé en LF, avec les fins de ligne à lui rendre à l'écriture."""
+    """Texte d'un fichier, brut et normalisé en LF, avec les fins de ligne à lui rendre."""
 
     text: str
+    # Contenu tel que lu, fins de ligne d'origine comprises (pour les éditions ciblées).
+    raw: str
     # Fins de ligne à conserver : les plus fréquentes du fichier (à égalité : par défaut).
     newline: str
     # Avertissement affiché avant le diff si le fichier mélange CRLF et LF ; vide sinon.
@@ -112,9 +116,13 @@ class _TextFile:
     # fichier modifié par ailleurs entre sa lecture et son écriture.
     digest: str
 
+    def to_disk(self, text: str) -> str:
+        """`text` (en LF ou CRLF) avec les fins de ligne de ce fichier, prêt à être écrit."""
+        return text.replace("\r\n", "\n").replace("\n", self.newline)
+
 
 # Fichier qui n'existe pas encore : texte vide, fins de ligne LF, pas d'empreinte.
-_NEW_FILE = _TextFile(text="", newline="\n", warning="", digest="")
+_NEW_FILE = _TextFile(text="", raw="", newline="\n", warning="", digest="")
 
 
 def _digest(content: bytes) -> str:
@@ -165,6 +173,7 @@ def _parse_text(raw_bytes: bytes, default_newline: str = "\n") -> _TextFile:
         )
     return _TextFile(
         text=raw_content.replace("\r\n", "\n"),
+        raw=raw_content,
         newline=newline,
         warning=warning,
         digest=_digest(raw_bytes),
@@ -200,18 +209,17 @@ def _unified_diff(previous: str, proposed: str, fromfile: str, tofile: str) -> s
     )
 
 
-def _count_occurrences(text: str, block: str, limit: int) -> int:
-    """Nombre d'occurrences de `block` dans `text`, chevauchements compris, plafonné à
-    `limit` (la recherche s'arrête dès qu'il est atteint).
+def _find_block(raw: str, block: str, limit: int) -> list[tuple[int, int]]:
+    """Positions (début, fin) dans `raw` des occurrences de `block`, `limit` au plus.
 
-    `str.count` ignore les chevauchements : « aa » compte une fois dans « aaa » alors
-    qu'il y est à deux endroits."""
-    count = 0
-    position = text.find(block)
-    while position != -1 and count < limit:
-        count += 1
-        position = text.find(block, position + 1)
-    return count
+    `block` est en LF : chacun de ses `\\n` correspond à un LF ou à un CRLF de `raw`, ce qui
+    permet de retrouver un bloc dans un fichier CRLF ou aux fins de ligne mixtes sans
+    rien convertir. Les occurrences qui se chevauchent sont toutes trouvées (« aa » est
+    à deux endroits dans « aaa »), et la recherche s'arrête dès que `limit` est atteint."""
+    pattern = r"\r?\n".join(re.escape(line) for line in block.split("\n"))
+    # L'anticipation `(?=...)` n'avance pas : les occurrences chevauchantes sont vues.
+    matches = re.finditer(f"(?=({pattern}))", raw)
+    return [match.span(1) for match in islice(matches, limit)]
 
 
 def _kill_process_tree(process: subprocess.Popen) -> None:
@@ -419,17 +427,17 @@ def create_workspace_tools(
     def confirm_and_save(
         file_path: Path,
         original: _TextFile,
-        proposed: str,
+        written: str,
         saved_message: str,
     ) -> str:
-        """Affiche le diff `original` -> `proposed`, puis écrit après accord.
+        """Affiche le diff `original` -> `written`, puis écrit `written` tel quel après accord.
 
-        `proposed` peut contenir des CRLF : il est normalisé en LF, puis écrit avec
-        les fins de ligne de `original`."""
-        proposed = proposed.replace("\r\n", "\n")
+        `written` est le contenu exact du fichier (fins de ligne comprises) : le diff est
+        calculé sur les deux textes normalisés en LF."""
+        proposed = written.replace("\r\n", "\n")
         relative_path = file_path.relative_to(root).as_posix()
         # Taille du texte tel qu'il sera écrit (CRLF compris), pas de sa version en LF.
-        check_content_size(relative_path, proposed.replace("\n", original.newline))
+        check_content_size(relative_path, written)
         diff = _unified_diff(
             original.text,
             proposed,
@@ -462,7 +470,7 @@ def create_workspace_tools(
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with file_path.open("w", encoding="utf-8", newline="") as target:
-            target.write(proposed.replace("\n", original.newline))
+            target.write(written)
         return f"{saved_message} : {relative_path}"
 
     @tool
@@ -476,7 +484,9 @@ def create_workspace_tools(
         original = (
             read_existing_text(file_path, path) if file_path.exists() else _NEW_FILE
         )
-        return confirm_and_save(file_path, original, content, "Fichier enregistré")
+        return confirm_and_save(
+            file_path, original, original.to_disk(content), "Fichier enregistré"
+        )
 
     @tool
     @measure_action("edit_file")
@@ -499,28 +509,29 @@ def create_workspace_tools(
             )
 
         original = read_existing_text(file_path, path)
-        if original.warning:
-            raise ValueError(
-                f"Le fichier {path} contient des fins de ligne mixtes (CRLF et LF) : "
-                "edit_file refuse de le modifier car il changerait aussi les lignes "
-                "voisines. Utilisez write_file pour le réécrire en entier."
-            )
-        old_block = old_string.replace("\r\n", "\n")
-        # Deux occurrences suffisent à conclure à l'ambiguïté : inutile de les compter toutes.
-        occurrences = _count_occurrences(original.text, old_block, limit=2)
-        if occurrences == 0:
+        # Deux occurrences suffisent à conclure à l'ambiguïté : inutile de les chercher toutes.
+        matches = _find_block(original.raw, old_string.replace("\r\n", "\n"), limit=2)
+        if not matches:
             raise ValueError(
                 f"old_string introuvable dans {path} : il doit correspondre "
                 "exactement au texte du fichier (espaces et retours à la ligne "
                 "compris). Relisez le fichier avec read_file."
             )
-        if occurrences > 1:
+        if len(matches) > 1:
             raise ValueError(
-                f"old_string apparaît au moins {occurrences} fois dans {path} : ajoutez "
+                f"old_string apparaît au moins {len(matches)} fois dans {path} : ajoutez "
                 "des lignes voisines pour l'identifier de façon unique."
             )
-        proposed = original.text.replace(old_block, new_string.replace("\r\n", "\n"), 1)
-        return confirm_and_save(file_path, original, proposed, "Fichier modifié")
+        # Seul le bloc remplacé reçoit les fins de ligne majoritaires : le reste du
+        # fichier, même mixte, est conservé octet pour octet.
+        start, end = matches[0]
+        written = (
+            original.raw[:start] + original.to_disk(new_string) + original.raw[end:]
+        )
+        # L'avertissement « tout sera converti » ne vaut pas pour une édition ciblée.
+        return confirm_and_save(
+            file_path, replace(original, warning=""), written, "Fichier modifié"
+        )
 
     @tool
     @measure_action("run_shell")
