@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage
 
 # Bloc de code markdown ```json ... ``` glissé par un petit modèle dans sa prose.
 _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -113,7 +113,9 @@ def parse_tool_calls(
     return calls
 
 
-def normalize_text_tool_call(response: Any, tool_names: Collection[str]) -> Any:
+def normalize_text_tool_call(
+    response: BaseMessage, tool_names: Collection[str]
+) -> BaseMessage | MalformedToolCall:
     """Convertit un appel d'outil écrit dans le texte (JSON brut, bloc ```json ou balises
     <tool_call>) en vrai tool call ; sinon renvoie la réponse inchangée.
 
