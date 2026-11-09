@@ -386,6 +386,13 @@ def test_system_prompt_lists_every_tool_and_forbids_denying_capabilities(tmp_pat
     ):
         assert tool_name in system_prompt
     assert "préfère edit_file" in system_prompt
+    no_pasting_sentence = next(
+        sentence
+        for sentence in system_prompt.split(". ")
+        if "ne colle pas de code dans le chat" in sentence
+    )
+    assert "créer ou de modifier un fichier" in no_pasting_sentence
+    assert "write_file" not in no_pasting_sentence
     assert "ne dis jamais que tu ne peux pas" in system_prompt
     assert "ne colle pas de code dans le chat" in system_prompt
     assert "Répondre en français." in system_prompt
