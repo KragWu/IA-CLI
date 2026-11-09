@@ -258,9 +258,9 @@ def _present_messages(
     Un appel d'outil illisible n'est pas annoncé comme une réponse : seule la
     correction qui le suit informe l'utilisateur que l'agent réessaie."""
     for index, message in enumerate(messages):
-        following = messages[index + 1 : index + 2]
-        if following and is_tool_call_feedback(following[0]):
-            continue
+        has_next = index + 1 < len(messages)
+        if has_next and is_tool_call_feedback(messages[index + 1]):
+            continue  # appel raté : annoncé par sa correction, pas comme une réponse
         _present_message(message, chat_presenter)
 
 
