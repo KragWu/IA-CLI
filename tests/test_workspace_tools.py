@@ -454,6 +454,25 @@ def test_edit_file_counts_overlapping_matches_as_ambiguous(tmp_path):
     assert confirmations == []
 
 
+def test_edit_file_ambiguity_message_does_not_claim_an_exact_count(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"x\n" * 5)
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="au moins 2 fois"):
+        tools["edit_file"].invoke(
+            {"path": "main.py", "old_string": "x\n", "new_string": "y\n"}
+        )
+
+    assert target.read_bytes() == b"x\n" * 5
+
+
+def test_count_occurrences_stops_at_the_limit_even_with_overlaps():
+    assert workspace_tools._count_occurrences("aaaaa", "aa", limit=2) == 2
+    assert workspace_tools._count_occurrences("aaaaa", "aa", limit=10) == 4
+    assert workspace_tools._count_occurrences("abc", "d", limit=2) == 0
+
+
 def test_edit_file_missing_match_failure(tmp_path):
     target = tmp_path / "main.py"
     target.write_bytes(b"a\nb\n")
