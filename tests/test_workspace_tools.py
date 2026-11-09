@@ -473,6 +473,31 @@ def test_find_block_stops_at_the_limit_even_with_overlaps():
     assert workspace_tools._find_block("abc", "d", limit=2) == []
 
 
+def test_find_block_starting_with_a_newline_matches_a_crlf_once():
+    # Un bloc qui commence par `\n` ne doit pas aussi correspondre au milieu d'un CRLF.
+    assert workspace_tools._find_block("a\r\nfoo", "\nfoo", limit=2) == [(1, 6)]
+    assert workspace_tools._find_block("a\nfoo", "\nfoo", limit=2) == [(1, 5)]
+    assert workspace_tools._find_block("a\r\nfoo\r\nb\nfoo", "\nfoo", limit=5) == [
+        (1, 6),
+        (9, 13),
+    ]
+
+
+def test_edit_file_accepts_an_old_string_starting_with_a_newline_on_a_crlf_file(
+    tmp_path,
+):
+    target = tmp_path / "crlf.txt"
+    target.write_bytes(b"a\r\nfoo\r\nb\r\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    result = tools["edit_file"].invoke(
+        {"path": "crlf.txt", "old_string": "\nfoo", "new_string": "\nbar"}
+    )
+
+    assert result == "Fichier modifié : crlf.txt"
+    assert target.read_bytes() == b"a\r\nbar\r\nb\r\n"
+
+
 def test_find_block_matches_a_lf_block_against_crlf_text_and_returns_raw_spans():
     raw = "x\r\ny\nz\r\n"
 
