@@ -196,7 +196,11 @@ def _run_turn(
             error=failure,
             context_tokens=context_tokens,
         )
-    return _TurnOutcome(last_messages, response, context_tokens=context_tokens)
+    return _TurnOutcome(
+        _without_tool_call_feedback(last_messages, start=len(messages) + 1),
+        response,
+        context_tokens=context_tokens,
+    )
 
 
 def _context_tokens(messages: list[BaseMessage], start: int) -> int | None:
@@ -208,28 +212,40 @@ def _context_tokens(messages: list[BaseMessage], start: int) -> int | None:
     return None
 
 
+def _without_tool_call_feedback(
+    messages: list[BaseMessage], start: int
+) -> list[BaseMessage]:
+    """Retire, à partir de `start`, les appels d'outil illisibles du modèle et les
+    corrections qui leur répondaient : le modèle les a vus pendant le tour, mais les
+    rejouer aux tours suivants gaspille du contexte et l'incite à copier le format raté."""
+    kept = list(messages[:start])
+    for message in messages[start:]:
+        if (
+            is_tool_call_feedback(message)
+            and len(kept) > start
+            and isinstance(kept[-1], AIMessage)
+        ):
+            kept.pop()
+        else:
+            kept.append(message)
+    return kept
+
+
 def _without_incomplete_tail(
     messages: list[BaseMessage], turn_start: int
 ) -> list[BaseMessage]:
     """Retire la fin d'un tour en échec qui laisserait un historique invalide :
-    un appel d'outil sans résultat, une réponse vide du modèle ou un appel d'outil
-    illisible avec la correction qui lui répondait. Si le tour n'a
-    rien produit de plus que la demande (index turn_start), celle-ci est retirée
-    aussi : elle resterait sans réponse et précéderait la demande suivante."""
-    kept = list(messages)
-    while kept:
-        last = kept[-1]
-        if (
-            is_tool_call_feedback(last)
-            and len(kept) >= 2
-            and isinstance(kept[-2], AIMessage)
-        ):
-            # Appel illisible du modèle et correction demandée : on retire la paire.
-            del kept[-2:]
-        elif isinstance(last, AIMessage) and (last.tool_calls or not last.content):
-            kept.pop()
-        else:
-            break
+    un appel d'outil sans résultat ou une réponse vide du modèle, après avoir retiré
+    les échanges d'appels d'outil illisibles. Si le tour n'a rien produit de plus que
+    la demande (index turn_start), celle-ci est retirée aussi : elle resterait sans
+    réponse et précéderait la demande suivante."""
+    kept = _without_tool_call_feedback(messages, start=turn_start + 1)
+    while (
+        kept
+        and isinstance(kept[-1], AIMessage)
+        and (kept[-1].tool_calls or not kept[-1].content)
+    ):
+        kept.pop()
     if len(kept) == turn_start + 1:
         kept.pop()
     return kept
