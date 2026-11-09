@@ -34,9 +34,11 @@ _TAG_EXPECTED_FORMAT = (
 class MalformedToolCall:
     """Appel d'outil manifestement raté (balise `<tool_call>` illisible).
 
-    `error` est un message destiné au modèle pour qu'il corrige son appel."""
+    `error` est un message destiné au modèle pour qu'il corrige son appel ;
+    `truncated` indique que la réponse a été coupée par la limite de tokens."""
 
     error: str
+    truncated: bool = False
 
 
 _FEEDBACK_KEY = "iacli_tool_call_feedback"
@@ -57,9 +59,19 @@ def is_tool_call_feedback(message: BaseMessage) -> bool:
     )
 
 
-def _malformed(reason: str) -> MalformedToolCall:
+_TRUNCATED_REASON = (
+    "ta réponse a été coupée par la limite de tokens avant la fin de l'appel. "
+    "Fais un appel plus court (par exemple, découpe un gros write_file en "
+    "plusieurs écritures)."
+)
+
+
+def _malformed(reason: str, *, truncated: bool = False) -> MalformedToolCall:
+    if truncated:
+        reason = _TRUNCATED_REASON
     return MalformedToolCall(
-        f"Ton appel d'outil <tool_call> est invalide : {reason} {_TAG_EXPECTED_FORMAT}"
+        f"Ton appel d'outil <tool_call> est invalide : {reason} {_TAG_EXPECTED_FORMAT}",
+        truncated=truncated,
     )
 
 
@@ -70,7 +82,7 @@ def _skip_spaces(text: str, position: int) -> int:
 
 
 def _parse_tagged_tool_calls(
-    text: str,
+    text: str, *, truncated: bool = False
 ) -> list[dict[str, Any]] | MalformedToolCall | None:
     """Renvoie les tool calls des balises `<tool_call>` de `text`, un `MalformedToolCall`
     si l'une est invalide, None s'il n'y en a aucune. Le nom n'est pas confronté aux
@@ -79,7 +91,10 @@ def _parse_tagged_tool_calls(
 
     Une balise n'est une tentative d'appel que si du JSON (`{` ou `[`) la suit ; sinon
     c'est une simple mention dans la prose, ignorée. Le JSON est lu par un décodeur et
-    non par une regex : ses chaînes peuvent donc contenir `</tool_call>`."""
+    non par une regex : ses chaînes peuvent donc contenir `</tool_call>`.
+
+    `truncated` : la génération s'est arrêtée sur la limite de tokens ; un JSON coupé
+    ou une balise non refermée sont alors signalés comme tronqués."""
     decoder = json.JSONDecoder()
     calls: list[dict[str, Any]] = []
     position = 0
@@ -91,11 +106,12 @@ def _parse_tagged_tool_calls(
         try:
             payload, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as error:
-            return _malformed(f"JSON illisible ({error}).")
+            return _malformed(f"JSON illisible ({error}).", truncated=truncated)
         end = _skip_spaces(text, end)
         if not text.startswith(_TOOL_CALL_CLOSE, end):
             return _malformed(
-                "une balise <tool_call> n'est pas refermée par </tool_call>."
+                "une balise <tool_call> n'est pas refermée par </tool_call>.",
+                truncated=truncated,
             )
         position = end + len(_TOOL_CALL_CLOSE)
         if not isinstance(payload, dict):
@@ -160,7 +176,8 @@ def normalize_text_tool_call(
     if not isinstance(response.content, str):
         return response
     content = response.content
-    calls = _parse_tagged_tool_calls(content)
+    truncated = response.response_metadata.get("done_reason") == "length"
+    calls = _parse_tagged_tool_calls(content, truncated=truncated)
     if isinstance(calls, MalformedToolCall):
         return calls
     if calls is None:
