@@ -113,7 +113,8 @@ Détails de fonctionnement :
 - **Diff** : une dernière ligne sans retour à la ligne est signalée par
   `\ Pas de retour à la ligne à la fin du fichier`, pour que l'ajout ou le retrait de ce retour soit visible.
 - **Limites de taille** : `read_file`, `search_files`, `write_file` et `edit_file` ignorent ou refusent les fichiers de plus de
-  1 000 000 octets. Les sorties d'outils sont tronquées à 30 000 caractères. `list_files` s'arrête à 200 fichiers
+  1 000 000 octets ; pour l'écriture, la taille mesurée est celle du fichier tel qu'il sera écrit (fins de ligne CRLF
+  comprises). Les sorties d'outils sont tronquées à 30 000 caractères. `list_files` s'arrête à 200 fichiers
   (`[liste limitée à 200 fichiers]`) et `search_files` à 100 correspondances
   (`[résultats limités à 100 correspondances]`) : ce sont des indications de troncature, pas des erreurs.
   `search_files` signale aussi le nombre de fichiers ignorés car trop volumineux ou non UTF-8.

@@ -385,6 +385,8 @@ def create_workspace_tools(
         les fins de ligne de `original`."""
         proposed = proposed.replace("\r\n", "\n")
         relative_path = file_path.relative_to(root).as_posix()
+        # Taille du texte tel qu'il sera écrit (CRLF compris), pas de sa version en LF.
+        check_content_size(relative_path, proposed.replace("\n", original.newline))
         diff = _unified_diff(
             original.text,
             proposed,
@@ -420,7 +422,6 @@ def create_workspace_tools(
         file_path = resolve_path(path)
         if file_path.exists() and not file_path.is_file():
             raise IsADirectoryError(f"Le chemin n'est pas un fichier : {path}")
-        check_content_size(path, content)
 
         original = (
             read_existing_text(file_path, path) if file_path.exists() else _NEW_FILE
@@ -468,7 +469,6 @@ def create_workspace_tools(
                 "des lignes voisines pour l'identifier de façon unique."
             )
         proposed = original.text.replace(old_block, new_string.replace("\r\n", "\n"), 1)
-        check_content_size(path, proposed)
         return confirm_and_save(file_path, original, proposed, "Fichier modifié")
 
     @tool

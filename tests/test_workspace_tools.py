@@ -577,6 +577,54 @@ def test_edit_file_rejects_result_too_large(tmp_path):
     assert target.read_text(encoding="utf-8") == "debut\n"
 
 
+def test_edit_file_checks_the_size_of_the_text_as_written_with_crlf(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(workspace_tools, "MAX_FILE_BYTES", 50)
+    target = tmp_path / "crlf.txt"
+    original = b"".join(f"l{number}\r\n".encode() for number in range(1, 10))
+    target.write_bytes(original)
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    # 39 octets en LF (sous la limite de 50), mais 54 une fois écrit en CRLF.
+    with pytest.raises(ValueError, match="trop volumineux"):
+        tools["edit_file"].invoke(
+            {
+                "path": "crlf.txt",
+                "old_string": "l1\n",
+                "new_string": "l1\n" + "x\n" * 6,
+            }
+        )
+
+    assert target.read_bytes() == original
+    assert confirmations == []
+
+
+def test_write_file_checks_the_size_of_the_text_as_written_with_crlf(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(workspace_tools, "MAX_FILE_BYTES", 50)
+    target = tmp_path / "crlf.txt"
+    original = b"".join(f"l{number}\r\n".encode() for number in range(1, 10))
+    target.write_bytes(original)
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    # 45 octets en LF (sous la limite de 50), mais 60 une fois écrit en CRLF.
+    with pytest.raises(ValueError, match="trop volumineux"):
+        tools["write_file"].invoke({"path": "crlf.txt", "content": "ab\n" * 15})
+
+    assert target.read_bytes() == original
+    assert confirmations == []
+
+
 def test_edit_file_reports_timing(tmp_path):
     (tmp_path / "notes.txt").write_text("a", encoding="utf-8")
     timings = []
