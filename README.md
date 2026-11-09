@@ -87,7 +87,8 @@ disque.
 | `read_file`    | Lire un fichier texte (UTF-8) du projet                    | non          |
 | `list_files`   | Lister les fichiers du projet ou d'un sous-dossier         | non          |
 | `search_files` | Rechercher un texte, sans distinction de casse             | non          |
-| `write_file`   | Créer ou remplacer un fichier                              | **oui** (diff affiché) |
+| `write_file`   | Créer un fichier ou remplacer tout son contenu             | **oui** (diff affiché) |
+| `edit_file`    | Remplacer un bloc de texte exact dans un fichier existant  | **oui** (diff affiché) |
 | `run_shell`    | Exécuter une commande shell dans le dossier du projet      | **oui** (commande affichée) |
 
 Les demandes de confirmation attendent `o`, `oui`, `y` ou `yes` ; toute autre réponse (y compris une réponse vide)
@@ -102,7 +103,12 @@ Détails de fonctionnement :
   `[Chemin demandé introuvable : … ; fichier lu : …]` pour que le modèle sache quel fichier a réellement été lu.
   Un nom ambigu produit une erreur demandant un chemin plus précis ; un chemin qui désigne un dossier est refusé
   (utiliser `list_files`).
-- **Limites de taille** : `read_file`, `search_files` et `write_file` ignorent ou refusent les fichiers de plus de
+- **Édition ciblée** : `edit_file(path, old_string, new_string)` remplace `old_string` par `new_string` sans toucher au
+  reste du fichier. `old_string` doit correspondre exactement au texte du fichier et n'y apparaître qu'une fois : un
+  bloc introuvable, présent plusieurs fois, vide ou identique à `new_string` est une erreur renvoyée au modèle, et le
+  fichier reste intact. Les fins de ligne sont comparées en LF ; celles du fichier (LF ou CRLF) sont conservées.
+  `edit_file` ne crée pas de fichier (utiliser `write_file`).
+- **Limites de taille** : `read_file`, `search_files`, `write_file` et `edit_file` ignorent ou refusent les fichiers de plus de
   1 000 000 octets. Les sorties d'outils sont tronquées à 30 000 caractères. `list_files` s'arrête à 200 fichiers
   (`[liste limitée à 200 fichiers]`) et `search_files` à 100 correspondances
   (`[résultats limités à 100 correspondances]`) : ce sont des indications de troncature, pas des erreurs.
@@ -192,7 +198,7 @@ produisent un avertissement, pas une erreur fatale.
 
 ## Limites et sécurité
 
-- Les **chemins** des outils de fichiers (`read_file`, `list_files`, `search_files`, `write_file`) sont confinés au
+- Les **chemins** des outils de fichiers (`read_file`, `list_files`, `search_files`, `write_file`, `edit_file`) sont confinés au
   dossier courant : un chemin qui en sort, y compris via `..` ou un lien symbolique, est refusé.
 - **`run_shell` n'est pas confiné** : la commande démarre dans le dossier du projet mais peut accéder à tout ce que votre
   compte peut atteindre. Lisez attentivement chaque commande avant de confirmer.

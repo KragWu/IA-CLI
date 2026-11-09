@@ -381,9 +381,11 @@ def test_system_prompt_lists_every_tool_and_forbids_denying_capabilities(tmp_pat
         "list_files",
         "search_files",
         "write_file",
+        "edit_file",
         "run_shell",
     ):
         assert tool_name in system_prompt
+    assert "préfère edit_file" in system_prompt
     assert "ne dis jamais que tu ne peux pas" in system_prompt
     assert "ne colle pas de code dans le chat" in system_prompt
     assert "Répondre en français." in system_prompt
