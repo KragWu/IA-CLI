@@ -22,7 +22,8 @@ num_ctx = 18000
 
 [files]
 # Fin de ligne des nouveaux fichiers : "auto" (celle du système), "lf" ou "crlf".
-# Un fichier existant garde sa fin de ligne la plus fréquente.
+# Un fichier existant garde sa fin de ligne la plus fréquente. Les scripts shell
+# (.sh, .bash, .zsh) et les Makefile sont toujours créés en LF, les .bat et .cmd en CRLF.
 end_of_line = "auto"
 """
 

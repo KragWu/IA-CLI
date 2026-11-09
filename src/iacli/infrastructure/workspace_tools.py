@@ -164,6 +164,31 @@ def _newline_name(newline: str) -> str:
     return "CRLF" if newline == "\r\n" else "LF"
 
 
+# Fichiers dont la fin de ligne est imposée par leur interpréteur, quel que soit le réglage :
+# en CRLF, un script shell (shebang `#!/bin/sh\r`) ou un Makefile échoue sous Linux ; en LF,
+# un script `.bat` / `.cmd` peut mal s'exécuter sous Windows (étiquettes de `goto`…).
+_FIXED_NEWLINE_BY_SUFFIX = {
+    ".sh": "\n",
+    ".bash": "\n",
+    ".zsh": "\n",
+    ".bat": "\r\n",
+    ".cmd": "\r\n",
+}
+_FIXED_NEWLINE_BY_NAME = {"makefile": "\n", "gnumakefile": "\n"}
+
+
+def _default_newline_for(file_path: Path, default_newline: str) -> str:
+    """Fin de ligne par défaut de `file_path` : `default_newline`, sauf LF pour les scripts
+    shell et les Makefile, et CRLF pour les `.bat` / `.cmd`, quel que soit le réglage. Un
+    fichier existant garde de toute façon sa fin de ligne majoritaire ; cette valeur ne
+    sert qu'aux nouveaux fichiers et à ceux dont les fins de ligne ne permettent pas de
+    trancher."""
+    return _FIXED_NEWLINE_BY_NAME.get(
+        file_path.name.casefold(),
+        _FIXED_NEWLINE_BY_SUFFIX.get(file_path.suffix.casefold(), default_newline),
+    )
+
+
 def _parse_text(raw_bytes: bytes, default_newline: str = "\n") -> _TextFile:
     """Décode (UTF-8) les octets d'un fichier, les normalise en LF et en déduit ses fins de
     ligne : la plus fréquente (CRLF ou LF), ou `default_newline` à égalité ou si le
@@ -442,7 +467,9 @@ def create_workspace_tools(
         if file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour modification : {path}")
         try:
-            return _parse_text(file_path.read_bytes(), default_newline)
+            return _parse_text(
+                file_path.read_bytes(), _default_newline_for(file_path, default_newline)
+            )
         except UnicodeDecodeError as error:
             raise ValueError(
                 f"Le fichier existant n'est pas encodé en UTF-8 : {path}"
@@ -511,7 +538,7 @@ def create_workspace_tools(
         original = (
             read_existing_text(file_path, path)
             if file_path.exists()
-            else _TextFile.empty(default_newline)
+            else _TextFile.empty(_default_newline_for(file_path, default_newline))
         )
         return confirm_and_save(
             file_path,
