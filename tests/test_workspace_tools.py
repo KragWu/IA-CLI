@@ -254,6 +254,203 @@ def test_write_file_rejects_existing_file_that_is_not_utf8(tmp_path):
     assert target.read_bytes() == "caf\xe9\n".encode("latin-1")
 
 
+def numbered_lines(count=50):
+    return [f"ligne {number}\n" for number in range(1, count + 1)]
+
+
+def test_edit_file_exact_match_success(tmp_path):
+    target = tmp_path / "main.py"
+    lines = numbered_lines()
+    target.write_text("".join(lines), encoding="utf-8")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    result = tools["edit_file"].invoke(
+        {
+            "path": "main.py",
+            "old_string": "".join(lines[9:12]),
+            "new_string": "dix\nonze\ndouze\ntreize\n",
+        }
+    )
+
+    assert result == "Fichier modifié : main.py"
+    expected = [*lines[:9], "dix\n", "onze\n", "douze\n", "treize\n", *lines[12:]]
+    assert target.read_text(encoding="utf-8") == "".join(expected)
+
+
+def test_edit_file_shows_a_small_diff_and_asks_confirmation(tmp_path):
+    (tmp_path / "main.py").write_text("".join(numbered_lines()), encoding="utf-8")
+    previews = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: previews.append((path, diff)) or True,
+    )
+
+    tools["edit_file"].invoke(
+        {"path": "main.py", "old_string": "ligne 10\n", "new_string": "dix\n"}
+    )
+
+    assert previews[0][0] == "main.py"
+    assert "-ligne 10" in previews[0][1]
+    assert "+dix" in previews[0][1]
+    assert "ligne 30" not in previews[0][1]
+
+
+def test_edit_file_refused_by_user_leaves_file_intact(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"a\nb\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: False)
+
+    result = tools["edit_file"].invoke(
+        {"path": "main.py", "old_string": "a\n", "new_string": "z\n"}
+    )
+
+    assert "refusée" in result
+    assert target.read_bytes() == b"a\nb\n"
+
+
+def test_edit_file_ambiguous_match_failure(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"x = 1\ny = 2\nx = 1\n")
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    with pytest.raises(ValueError, match="2 fois"):
+        tools["edit_file"].invoke(
+            {"path": "main.py", "old_string": "x = 1\n", "new_string": "x = 3\n"}
+        )
+
+    assert target.read_bytes() == b"x = 1\ny = 2\nx = 1\n"
+    assert confirmations == []
+
+
+def test_edit_file_missing_match_failure(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"a\nb\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="introuvable"):
+        tools["edit_file"].invoke(
+            {"path": "main.py", "old_string": "absent", "new_string": "z"}
+        )
+
+    assert target.read_bytes() == b"a\nb\n"
+
+
+@pytest.mark.parametrize(
+    ("old_string", "new_string", "message"),
+    [("", "z", "vide"), ("a", "a", "identiques")],
+)
+def test_edit_file_rejects_invalid_arguments(tmp_path, old_string, new_string, message):
+    (tmp_path / "main.py").write_text("a\n", encoding="utf-8")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match=message):
+        tools["edit_file"].invoke(
+            {"path": "main.py", "old_string": old_string, "new_string": new_string}
+        )
+
+
+def test_edit_file_rejects_missing_file_and_directory(tmp_path):
+    (tmp_path / "docs").mkdir()
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(FileNotFoundError):
+        tools["edit_file"].invoke(
+            {"path": "absent.py", "old_string": "a", "new_string": "b"}
+        )
+    with pytest.raises(IsADirectoryError):
+        tools["edit_file"].invoke(
+            {"path": "docs", "old_string": "a", "new_string": "b"}
+        )
+    assert not (tmp_path / "absent.py").exists()
+
+
+def test_edit_file_rejects_file_that_is_not_utf8(tmp_path):
+    target = tmp_path / "latin.txt"
+    target.write_bytes("caf\xe9\n".encode("latin-1"))
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="UTF-8"):
+        tools["edit_file"].invoke(
+            {"path": "latin.txt", "old_string": "caf", "new_string": "thé"}
+        )
+
+    assert target.read_bytes() == "caf\xe9\n".encode("latin-1")
+
+
+def test_edit_file_rejects_paths_outside_project(tmp_path):
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="doit rester dans le projet"):
+        tools["edit_file"].invoke(
+            {"path": "../outside.txt", "old_string": "a", "new_string": "b"}
+        )
+
+
+def test_edit_file_keeps_crlf_and_matches_multiline_old_string_written_in_lf(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_bytes(b"un\r\ndeux\r\ntrois\r\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    tools["edit_file"].invoke(
+        {"path": "notes.txt", "old_string": "un\ndeux\n", "new_string": "1\n2\n"}
+    )
+
+    assert target.read_bytes() == b"1\r\n2\r\ntrois\r\n"
+
+
+def test_edit_file_keeps_lf_line_endings(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_bytes(b"un\ndeux\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    tools["edit_file"].invoke(
+        {"path": "notes.txt", "old_string": "deux", "new_string": "2"}
+    )
+
+    assert target.read_bytes() == b"un\n2\n"
+
+
+def test_edit_file_rejects_result_too_large(tmp_path):
+    target = tmp_path / "big.txt"
+    target.write_text("debut\n", encoding="utf-8")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="trop volumineux"):
+        tools["edit_file"].invoke(
+            {
+                "path": "big.txt",
+                "old_string": "debut",
+                "new_string": "x" * (workspace_tools.MAX_FILE_BYTES + 1),
+            }
+        )
+
+    assert target.read_text(encoding="utf-8") == "debut\n"
+
+
+def test_edit_file_reports_timing(tmp_path):
+    (tmp_path / "notes.txt").write_text("a", encoding="utf-8")
+    timings = []
+    tools = {
+        item.name: item
+        for item in create_workspace_tools(
+            tmp_path,
+            lambda _path, _diff: True,
+            lambda _command, _cwd: False,
+            lambda name, elapsed: timings.append(name),
+        )
+    }
+
+    tools["edit_file"].invoke(
+        {"path": "notes.txt", "old_string": "a", "new_string": "b"}
+    )
+
+    assert timings == ["edit_file"]
+
+
 def test_workspace_walk_never_enters_ignored_directories(tmp_path, monkeypatch):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("print('Hello')\n", encoding="utf-8")

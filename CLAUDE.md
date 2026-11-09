@@ -70,7 +70,7 @@ Architecture en couches (ports et adaptateurs) sous `src/iacli/` :
 
 - `domain/` : dataclasses de configuration et événements (`InitializationEvent`, `DownloadProgress`…).
 - `services/` : cas d'usage (`initialize.py`, `chat.py`), contrats `Protocol` dans `ports.py`, et le graphe d'agent (`agent_graph.py`). Les services ne dépendent que des ports.
-- `infrastructure/` : implémentations concrètes (client HTTP Ollama, config TOML, vérifications système, `workspace_tools.py` pour les outils lecture/liste/recherche/écriture/shell).
+- `infrastructure/` : implémentations concrètes (client HTTP Ollama, config TOML, vérifications système, `workspace_tools.py` pour les outils lecture/liste/recherche/écriture/édition ciblée/shell).
 - `adapters/` : sortie console (`cli_presenter.py`) et interaction de chat (`cli_chat.py`, confirmations, indicateur animé, minuteurs).
 - `cli.py` : racine de composition ; seul endroit qui câble infrastructure, adapters et services (`OllamaClientFactory`, `handle_init`, `handle_chat`). `iacli/ollama.py` n'est qu'un shim de compatibilité vers `infrastructure/ollama.py`.
 
@@ -83,6 +83,7 @@ Flux du chat : `handle_chat` vérifie la config et que le modèle est installé,
 - `--config-dir` est accepté sur `iacli`, `iacli chat` et `iacli init` (défaut `~/.config/iacli`, y compris sous Windows).
 - Le README est la documentation utilisateur de référence : le mettre à jour avec tout changement de comportement visible (outils, limites, messages, configuration).
 - Un appel d'outil renvoyé en JSON dans le texte du modèle (`{"name":..., "arguments":...}`, éventuellement plusieurs objets) est reconnu pour les outils connus et converti en vrai tool call. Un nom de fichier seul est résolu s'il est unique dans le projet, sinon erreur d'ambiguïté.
+- `edit_file(path, old_string, new_string)` remplace un bloc exact (une seule occurrence exigée, sinon erreur) dans un fichier existant, avec diff et confirmation ; fins de ligne normalisées en LF pour la comparaison, celles du fichier conservées. `write_file` crée ou réécrit un fichier entier ; les deux partagent `confirm_and_save`.
 - Lecture/recherche ignorent les fichiers > 1 000 000 octets ; sorties d'outils tronquées à 30 000 caractères ; recherche limitée à 100 correspondances (troncature signalée, pas une erreur).
 - Les durées (modèle, outils, total incluant le temps de confirmation) sont affichées après chaque tour.
 - `OLLAMA_MODELS` définit l'emplacement des modèles pour le calcul d'espace disque.
