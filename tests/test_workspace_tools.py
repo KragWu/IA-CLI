@@ -295,6 +295,55 @@ def test_edit_file_shows_a_small_diff_and_asks_confirmation(tmp_path):
     assert "ligne 30" not in previews[0][1]
 
 
+NO_FINAL_NEWLINE_MARKER = "\\ Pas de retour à la ligne à la fin du fichier"
+
+
+def test_edit_file_diff_flags_a_removed_final_newline(tmp_path):
+    (tmp_path / "main.py").write_bytes(b"foo\nbar\n")
+    previews = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: previews.append(diff) or True,
+    )
+
+    tools["edit_file"].invoke(
+        {"path": "main.py", "old_string": "bar\n", "new_string": "bar"}
+    )
+
+    diff_lines = previews[0].splitlines()
+    assert diff_lines[-3:] == ["-bar", "+bar", NO_FINAL_NEWLINE_MARKER]
+
+
+def test_write_file_diff_flags_a_missing_final_newline_before_and_after(tmp_path):
+    (tmp_path / "notes.txt").write_bytes(b"un\ndeux")
+    previews = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: previews.append(diff) or True,
+    )
+
+    tools["write_file"].invoke({"path": "notes.txt", "content": "un\ndeux\ntrois"})
+
+    diff_lines = previews[0].splitlines()
+    assert diff_lines.count(NO_FINAL_NEWLINE_MARKER) == 2
+    assert diff_lines.index("-deux") + 1 == diff_lines.index(NO_FINAL_NEWLINE_MARKER)
+
+
+def test_diff_has_no_marker_when_both_versions_end_with_a_newline(tmp_path):
+    (tmp_path / "notes.txt").write_bytes(b"un\n")
+    previews = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: previews.append(diff) or True,
+    )
+
+    tools["edit_file"].invoke(
+        {"path": "notes.txt", "old_string": "un", "new_string": "1"}
+    )
+
+    assert NO_FINAL_NEWLINE_MARKER not in previews[0]
+
+
 def test_edit_file_refused_by_user_leaves_file_intact(tmp_path):
     target = tmp_path / "main.py"
     target.write_bytes(b"a\nb\n")

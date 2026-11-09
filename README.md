@@ -109,6 +109,8 @@ Détails de fonctionnement :
   fichier reste intact. Les fins de ligne sont comparées en LF ; celles du fichier (LF ou CRLF) sont conservées.
   `edit_file` ne crée pas de fichier (utiliser `write_file`) et refuse un fichier aux fins de ligne mixtes (CRLF et LF),
   pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier.
+- **Diff** : une dernière ligne sans retour à la ligne est signalée par
+  `\ Pas de retour à la ligne à la fin du fichier`, pour que l'ajout ou le retrait de ce retour soit visible.
 - **Limites de taille** : `read_file`, `search_files`, `write_file` et `edit_file` ignorent ou refusent les fichiers de plus de
   1 000 000 octets. Les sorties d'outils sont tronquées à 30 000 caractères. `list_files` s'arrête à 200 fichiers
   (`[liste limitée à 200 fichiers]`) et `search_files` à 100 correspondances
