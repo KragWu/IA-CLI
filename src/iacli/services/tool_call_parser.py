@@ -17,7 +17,7 @@ _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECAS
 
 # Format Hermes/Qwen : <tool_call>{"name": ..., "arguments": {...}}</tool_call>.
 _TOOL_CALL_OPEN = "<tool_call>"
-_TOOL_CALL_TAG = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
+_TOOL_CALL_CLOSE = "</tool_call>"
 
 
 def _make_tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -45,24 +45,41 @@ def _malformed(reason: str) -> MalformedToolCall:
     )
 
 
+def _skip_spaces(text: str, position: int) -> int:
+    while position < len(text) and text[position].isspace():
+        position += 1
+    return position
+
+
 def _parse_tagged_tool_calls(
     text: str,
 ) -> list[dict[str, Any]] | MalformedToolCall | None:
     """Renvoie les tool calls des balises `<tool_call>` de `text`, un `MalformedToolCall`
     si l'une est invalide, None s'il n'y en a aucune. Le nom n'est pas confronté aux
     outils connus : `ToolNode` renverra lui-même une erreur au modèle pour un outil
-    inconnu."""
-    if _TOOL_CALL_OPEN not in text:
-        return None
-    bodies = _TOOL_CALL_TAG.findall(text)
-    if text.count(_TOOL_CALL_OPEN) != len(bodies):
-        return _malformed("une balise <tool_call> n'est pas refermée par </tool_call>.")
-    calls = []
-    for body in bodies:
+    inconnu.
+
+    Une balise n'est une tentative d'appel que si du JSON (`{` ou `[`) la suit ; sinon
+    c'est une simple mention dans la prose, ignorée. Le JSON est lu par un décodeur et
+    non par une regex : ses chaînes peuvent donc contenir `</tool_call>`."""
+    decoder = json.JSONDecoder()
+    calls: list[dict[str, Any]] = []
+    position = 0
+    while (opening := text.find(_TOOL_CALL_OPEN, position)) != -1:
+        start = _skip_spaces(text, opening + len(_TOOL_CALL_OPEN))
+        if text[start : start + 1] not in ("{", "["):
+            position = start
+            continue
         try:
-            payload = json.loads(body)
+            payload, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as error:
             return _malformed(f"JSON illisible ({error}).")
+        end = _skip_spaces(text, end)
+        if not text.startswith(_TOOL_CALL_CLOSE, end):
+            return _malformed(
+                "une balise <tool_call> n'est pas refermée par </tool_call>."
+            )
+        position = end + len(_TOOL_CALL_CLOSE)
         if not isinstance(payload, dict):
             return _malformed('le JSON doit être un objet avec "name" et "arguments".')
         name = payload.get("name")
@@ -72,7 +89,7 @@ def _parse_tagged_tool_calls(
         if not isinstance(arguments, dict):
             return _malformed('le champ "arguments" doit être un objet JSON.')
         calls.append(_make_tool_call(name, arguments))
-    return calls
+    return calls or None
 
 
 def parse_tool_calls(
