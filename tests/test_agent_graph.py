@@ -2,7 +2,11 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
-from iacli.services.agent_graph import MaxToolIterationsError, build_control_graph
+from iacli.services.agent_graph import (
+    MalformedToolCallsError,
+    MaxToolIterationsError,
+    build_control_graph,
+)
 from tests.fakes import FakeChatModel
 
 
@@ -377,18 +381,76 @@ def test_malformed_tool_call_handling_asks_the_model_to_fix_its_call():
         if isinstance(message, ToolMessage)
     ] == ["contents of README.md"]
     assert result["messages"][-1].content == "Fichier lu."
-    assert result["tool_iterations"] == 2
+    assert result["tool_iterations"] == 1
 
 
-def test_malformed_tool_call_loop_is_stopped_by_the_iteration_limit():
-    model = FakeChatModel(
-        [AIMessage(content="<tool_call>{oups</tool_call>") for _ in range(5)]
-    )
-    graph = build_control_graph(
-        model, [read_file], lambda _state: True, max_iterations=2
-    )
+BROKEN = "<tool_call>{oups</tool_call>"
+VALID_CALL = (
+    '<tool_call>{"name": "read_file", "arguments": {"path": "README.md"}}</tool_call>'
+)
 
-    with pytest.raises(MaxToolIterationsError):
+
+def test_malformed_tool_call_loop_is_stopped_by_its_own_retry_limit():
+    model = FakeChatModel([AIMessage(content=BROKEN) for _ in range(10)])
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    with pytest.raises(MalformedToolCallsError, match="4 appels d'outil illisibles"):
         graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
 
-    assert len(model.calls) == 3
+    assert len(model.calls) == 4  # 3 réessais autorisés par défaut
+
+
+def test_malformed_tool_call_retry_limit_is_configurable():
+    model = FakeChatModel([AIMessage(content=BROKEN) for _ in range(10)])
+    graph = build_control_graph(
+        model, [read_file], lambda _state: True, max_malformed_retries=1
+    )
+
+    with pytest.raises(MalformedToolCallsError):
+        graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert len(model.calls) == 2
+
+
+def test_malformed_tool_call_retries_do_not_use_the_tool_iteration_budget():
+    model = FakeChatModel(
+        [
+            AIMessage(content=VALID_CALL),
+            AIMessage(content=BROKEN),
+            AIMessage(content="Terminé."),
+        ]
+    )
+    graph = build_control_graph(
+        model, [read_file], lambda _state: True, max_iterations=1
+    )
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert result["tool_iterations"] == 1
+    assert result["messages"][-1].content == "Terminé."
+
+
+def test_a_valid_response_resets_the_malformed_tool_call_count():
+    model = FakeChatModel(
+        [
+            AIMessage(content=BROKEN),
+            AIMessage(content=VALID_CALL),
+            AIMessage(content=BROKEN),
+            AIMessage(content="Terminé."),
+        ]
+    )
+    graph = build_control_graph(
+        model, [read_file], lambda _state: True, max_malformed_retries=1
+    )
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert result["messages"][-1].content == "Terminé."
+
+
+@pytest.mark.parametrize("option", ["max_iterations", "max_malformed_retries"])
+def test_graph_rejects_limits_below_one(option):
+    with pytest.raises(ValueError, match=option):
+        build_control_graph(
+            FakeChatModel(), [read_file], lambda _state: True, **{option: 0}
+        )
