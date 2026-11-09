@@ -123,7 +123,8 @@ Détails de fonctionnement :
   `search_files` signale aussi le nombre de fichiers ignorés car trop volumineux ou non UTF-8.
 - **Écriture** : un diff unifié est affiché avant confirmation. Les fins de ligne du fichier existant (LF ou CRLF)
   sont conservées ; si le fichier mélange les deux, un avertissement est affiché et tout est converti vers la fin de
-  ligne la plus fréquente (à égalité : celle de `end_of_line`). Un nouveau fichier prend la fin de ligne de `end_of_line`.
+  ligne la plus fréquente (à égalité : celle de `end_of_line`). Un nouveau fichier prend la fin de ligne de `end_of_line`, sauf les scripts shell
+  et Makefile (toujours en LF) et les `.bat` / `.cmd` (toujours en CRLF) : voir la section `config.toml` plus bas.
   Une modification dont le diff dépasse 30 000 caractères est refusée : le modèle doit la découper.
 - **Commande shell** : exécutée avec le shell du système (`cmd.exe` sous Windows) dans le dossier du projet, sans accès
   à l'entrée du chat, avec un délai maximal de 600 secondes (l'arbre de processus est alors arrêté). La réponse
@@ -182,6 +183,16 @@ end_of_line = "auto"
 - **Fins de ligne** : un fichier existant garde toujours sa fin de ligne la plus fréquente, quel que soit le réglage ou
   le système. `end_of_line` ne s'applique qu'aux nouveaux fichiers, et aux fichiers existants qui ne permettent pas de
   trancher (vides, sans fin de ligne, ou avec autant de CRLF que de LF).
+- **Exceptions par type de fichier**, quel que soit `end_of_line` (la casse du nom est ignorée) :
+
+  | Fichiers | Fin de ligne | Pourquoi |
+  |----------|--------------|----------|
+  | `.sh`, `.bash`, `.zsh`, `Makefile`, `GNUmakefile` | toujours **LF** | en CRLF, le shebang `#!/bin/sh\r` ou une règle `make` échoue sous Linux |
+  | `.bat`, `.cmd` | toujours **CRLF** | en LF, un script batch peut mal s'exécuter sous Windows (étiquettes de `goto`…) |
+
+  Comme pour les autres fichiers, un script existant garde sa fin de ligne majoritaire : l'exception ne sert que pour
+  les nouveaux fichiers et ceux dont les fins de ligne ne permettent pas de trancher. Tous les autres fichiers (`.csv`,
+  `.txt`, `.md`…) suivent `end_of_line`.
 - Les clés absentes prennent la valeur par défaut ci-dessus ; les nouvelles valeurs sont lues à chaque lancement.
 - Une valeur plus grande de `num_ctx` consomme davantage de mémoire. Si elle dépasse le contexte maximal annoncé par
   Ollama pour le modèle, `iacli chat` affiche un avertissement et utilise ce maximum.

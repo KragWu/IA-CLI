@@ -150,6 +150,112 @@ def test_edit_file_uses_the_default_line_ending_on_a_file_without_any(tmp_path):
     assert target.read_bytes() == b"a\r\nb"
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "deploy.sh",
+        "scripts/run.bash",
+        "prompt.zsh",
+        "Makefile",
+        "sub/Makefile",
+        "GNUmakefile",
+        "INSTALL.SH",
+    ],
+)
+def test_new_shell_scripts_and_makefiles_are_always_lf(tmp_path, name):
+    tools = create_tools(tmp_path, "\r\n")
+
+    tools["write_file"].invoke({"path": name, "content": "#!/bin/sh\necho ok\n"})
+
+    assert (tmp_path / name).read_bytes() == b"#!/bin/sh\necho ok\n"
+
+
+@pytest.mark.parametrize(
+    "name", ["build.bat", "scripts/setup.cmd", "RUN.BAT", "sub/clean.CMD"]
+)
+def test_new_batch_files_are_always_crlf(tmp_path, name):
+    tools = create_tools(tmp_path, "\n")
+
+    tools["write_file"].invoke({"path": name, "content": "@echo off\necho ok\n"})
+
+    assert (tmp_path / name).read_bytes() == b"@echo off\r\necho ok\r\n"
+
+
+def test_existing_batch_file_without_a_majority_uses_crlf(tmp_path):
+    target = tmp_path / "run.bat"
+    target.write_bytes(b"echo hi")
+    tools = create_tools(tmp_path, "\n")
+
+    tools["write_file"].invoke({"path": "run.bat", "content": "echo a\necho b\n"})
+
+    assert target.read_bytes() == b"echo a\r\necho b\r\n"
+
+
+def test_edit_file_on_a_batch_file_without_line_ending_uses_crlf(tmp_path):
+    target = tmp_path / "run.cmd"
+    target.write_bytes(b"echo hi")
+    tools = create_tools(tmp_path, "\n")
+
+    tools["edit_file"].invoke(
+        {"path": "run.cmd", "old_string": "echo hi", "new_string": "echo a\necho b"}
+    )
+
+    assert target.read_bytes() == b"echo a\r\necho b"
+
+
+def test_an_existing_lf_batch_file_keeps_its_majority_line_ending(tmp_path):
+    # L'exception ne vaut que pour la valeur par défaut : un fichier existant garde la sienne.
+    target = tmp_path / "run.bat"
+    target.write_bytes(b"echo a\necho b\n")
+    tools = create_tools(tmp_path, "\r\n")
+
+    tools["write_file"].invoke({"path": "run.bat", "content": "echo a\necho c\n"})
+
+    assert target.read_bytes() == b"echo a\necho c\n"
+
+
+@pytest.mark.parametrize("name", ["notes.txt", "script.sh.txt", "shell.md", "data.csv"])
+def test_other_new_files_keep_the_default_line_ending(tmp_path, name):
+    tools = create_tools(tmp_path, "\r\n")
+
+    tools["write_file"].invoke({"path": name, "content": "un\ndeux\n"})
+
+    assert (tmp_path / name).read_bytes() == b"un\r\ndeux\r\n"
+
+
+def test_existing_shell_script_without_a_majority_uses_lf(tmp_path):
+    target = tmp_path / "run.sh"
+    target.write_bytes(b"echo hi")
+    tools = create_tools(tmp_path, "\r\n")
+
+    tools["write_file"].invoke({"path": "run.sh", "content": "echo a\necho b\n"})
+
+    assert target.read_bytes() == b"echo a\necho b\n"
+
+
+def test_edit_file_on_a_shell_script_without_line_ending_uses_lf(tmp_path):
+    target = tmp_path / "run.sh"
+    target.write_bytes(b"echo hi")
+    tools = create_tools(tmp_path, "\r\n")
+
+    tools["edit_file"].invoke(
+        {"path": "run.sh", "old_string": "echo hi", "new_string": "echo a\necho b"}
+    )
+
+    assert target.read_bytes() == b"echo a\necho b"
+
+
+def test_an_existing_crlf_shell_script_keeps_its_majority_line_ending(tmp_path):
+    # L'exception ne vaut que pour la valeur par défaut : un fichier existant garde la sienne.
+    target = tmp_path / "run.sh"
+    target.write_bytes(b"echo a\r\necho b\r\n")
+    tools = create_tools(tmp_path, "\n")
+
+    tools["write_file"].invoke({"path": "run.sh", "content": "echo a\necho c\n"})
+
+    assert target.read_bytes() == b"echo a\r\necho c\r\n"
+
+
 @pytest.mark.parametrize("invalid", ["\r", "", "\n\n", "crlf"])
 def test_default_line_ending_must_be_lf_or_crlf(tmp_path, invalid):
     with pytest.raises(ValueError, match="default_newline"):
