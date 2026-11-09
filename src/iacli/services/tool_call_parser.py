@@ -119,8 +119,7 @@ def parse_tool_calls(
     position = 0
     payloads = []
     while position < len(text):
-        while position < len(text) and text[position].isspace():
-            position += 1
+        position = _skip_spaces(text, position)
         if position == len(text):
             break
         try:
