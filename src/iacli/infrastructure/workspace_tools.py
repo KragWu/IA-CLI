@@ -7,6 +7,7 @@ confinés au projet : une commande shell, elle, n'est pas isolée.
 
 import contextlib
 import difflib
+import hashlib
 import locale
 import os
 import signal
@@ -107,10 +108,25 @@ class _TextFile:
     newline: str
     # Avertissement affiché avant le diff si le fichier mélange CRLF et LF ; vide sinon.
     warning: str
+    # Empreinte du contenu brut lu (vide pour un fichier à créer) : sert à détecter un
+    # fichier modifié par ailleurs entre sa lecture et son écriture.
+    digest: str
 
 
-# Fichier qui n'existe pas encore : texte vide, fins de ligne LF.
-_NEW_FILE = _TextFile(text="", newline="\n", warning="")
+# Fichier qui n'existe pas encore : texte vide, fins de ligne LF, pas d'empreinte.
+_NEW_FILE = _TextFile(text="", newline="\n", warning="", digest="")
+
+
+def _digest(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _file_digest(file_path: Path) -> str:
+    """Empreinte du contenu actuel de `file_path`, vide s'il n'existe pas."""
+    try:
+        return _digest(file_path.read_bytes())
+    except FileNotFoundError:
+        return ""
 
 
 def _parse_text(raw_content: str) -> _TextFile:
@@ -118,8 +134,9 @@ def _parse_text(raw_content: str) -> _TextFile:
     crlf_count = raw_content.count("\r\n")
     lf_count = raw_content.count("\n") - crlf_count
     text = raw_content.replace("\r\n", "\n")
+    digest = _digest(raw_content.encode("utf-8"))
     if not crlf_count:
-        return _TextFile(text=text, newline="\n", warning="")
+        return _TextFile(text=text, newline="\n", warning="", digest=digest)
     warning = ""
     if lf_count:
         warning = (
@@ -127,7 +144,7 @@ def _parse_text(raw_content: str) -> _TextFile:
             f"({crlf_count} CRLF, {lf_count} LF) ; toutes seront converties "
             "en CRLF.\n"
         )
-    return _TextFile(text=text, newline="\r\n", warning=warning)
+    return _TextFile(text=text, newline="\r\n", warning=warning, digest=digest)
 
 
 # Signale, dans un diff, une dernière ligne sans retour à la ligne (comme git).
@@ -409,6 +426,13 @@ def create_workspace_tools(
             )
         if not confirm_file_write(relative_path, original.warning + diff):
             return f"Modification refusée par l'utilisateur : {relative_path}"
+        if _file_digest(file_path) != original.digest:
+            # Le fichier a été créé, modifié ou supprimé pendant la confirmation :
+            # l'écrire effacerait ce changement sans que l'utilisateur l'ait vu.
+            return (
+                f"Modification annulée : {relative_path} a changé pendant la "
+                "confirmation. Relisez-le avec read_file puis recommencez."
+            )
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with file_path.open("w", encoding="utf-8", newline="") as target:

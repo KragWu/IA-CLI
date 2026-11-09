@@ -110,6 +110,8 @@ Détails de fonctionnement :
   `edit_file` ne crée pas de fichier (utiliser `write_file`) et refuse un fichier aux fins de ligne mixtes (CRLF et LF),
   pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier, y compris avec le même
   texte, ce qui normalise ses fins de ligne en CRLF après confirmation.
+- **Modification concurrente** : si le fichier est créé, modifié ou supprimé pendant que l'utilisateur répond à la
+  confirmation, `write_file` et `edit_file` n'écrivent rien et demandent au modèle de relire le fichier.
 - **Diff** : une dernière ligne sans retour à la ligne est signalée par
   `\ Pas de retour à la ligne à la fin du fichier`, pour que l'ajout ou le retrait de ce retour soit visible.
 - **Limites de taille** : `read_file`, `search_files`, `write_file` et `edit_file` ignorent ou refusent les fichiers de plus de
