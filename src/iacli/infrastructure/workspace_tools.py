@@ -381,9 +381,12 @@ def create_workspace_tools(
             fromfile=f"a/{relative_path}",
             tofile=f"b/{relative_path}",
         )
-        if not diff and file_path.exists():
+        if not diff and original.warning:
+            # Même texte mais fins de ligne mixtes : réécrire sert à les normaliser.
+            diff = f"Normalisation des fins de ligne : {relative_path}\n"
+        elif not diff and file_path.exists():
             return "Aucune modification : le fichier contient déjà ce texte."
-        if not diff:
+        elif not diff:
             diff = f"Création du fichier vide : {relative_path}\n"
         if len(diff) > MAX_TOOL_OUTPUT_CHARS:
             return (

@@ -235,6 +235,41 @@ def test_write_file_reports_no_modification_when_only_line_endings_differ(tmp_pa
     assert target.read_bytes() == b"un\r\ndeux\r\n"
 
 
+def test_write_file_can_normalise_a_mixed_line_ending_file_with_the_same_text(
+    tmp_path,
+):
+    target = tmp_path / "mixed.txt"
+    target.write_bytes(b"un\r\ndeux\ntrois\r\n")
+    previews = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: previews.append((path, diff)) or True,
+    )
+
+    result = tools["write_file"].invoke(
+        {"path": "mixed.txt", "content": "un\ndeux\ntrois\n"}
+    )
+
+    assert result == "Fichier enregistré : mixed.txt"
+    assert target.read_bytes() == b"un\r\ndeux\r\ntrois\r\n"
+    assert previews[0][0] == "mixed.txt"
+    assert "fins de ligne mixtes" in previews[0][1]
+    assert "Normalisation des fins de ligne : mixed.txt" in previews[0][1]
+
+
+def test_write_file_leaves_a_mixed_file_intact_when_normalisation_is_refused(
+    tmp_path,
+):
+    target = tmp_path / "mixed.txt"
+    target.write_bytes(b"un\r\ndeux\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: False)
+
+    result = tools["write_file"].invoke({"path": "mixed.txt", "content": "un\ndeux\n"})
+
+    assert "refusée" in result
+    assert target.read_bytes() == b"un\r\ndeux\n"
+
+
 def test_write_file_writes_new_file_without_converting_line_endings(tmp_path):
     tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
 
