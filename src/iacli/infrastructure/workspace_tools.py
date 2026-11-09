@@ -136,12 +136,16 @@ def _file_digest(file_path: Path) -> str:
         return _UNREADABLE_DIGEST
 
 
-def _parse_text(raw_content: str) -> _TextFile:
-    """Normalise en LF le contenu brut d'un fichier et en déduit ses fins de ligne."""
+def _parse_text(raw_bytes: bytes) -> _TextFile:
+    """Décode (UTF-8) les octets d'un fichier, les normalise en LF et en déduit ses fins de
+    ligne. L'empreinte porte sur les octets lus, comme celle de `_file_digest`.
+
+    Lève `UnicodeDecodeError` si le contenu n'est pas de l'UTF-8."""
+    raw_content = raw_bytes.decode("utf-8")
     crlf_count = raw_content.count("\r\n")
     lf_count = raw_content.count("\n") - crlf_count
     text = raw_content.replace("\r\n", "\n")
-    digest = _digest(raw_content.encode("utf-8"))
+    digest = _digest(raw_bytes)
     if not crlf_count:
         return _TextFile(text=text, newline="\n", warning="", digest=digest)
     warning = ""
@@ -393,8 +397,7 @@ def create_workspace_tools(
         if file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour modification : {path}")
         try:
-            with file_path.open(encoding="utf-8", newline="") as existing:
-                return _parse_text(existing.read())
+            return _parse_text(file_path.read_bytes())
         except UnicodeDecodeError as error:
             raise ValueError(
                 f"Le fichier existant n'est pas encodé en UTF-8 : {path}"
