@@ -100,6 +100,9 @@ def _parse_tagged_tool_calls(
     position = 0
     while (opening := text.find(_TOOL_CALL_OPEN, position)) != -1:
         start = _skip_spaces(text, opening + len(_TOOL_CALL_OPEN))
+        if truncated and start == len(text):
+            # Coupé juste après la balise ouvrante : rien ne dit encore que c'est du JSON.
+            return _malformed("", truncated=True)
         if text[start : start + 1] not in ("{", "["):
             position = start
             continue
