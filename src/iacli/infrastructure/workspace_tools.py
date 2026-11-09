@@ -218,6 +218,10 @@ def _find_block(raw: str, block: str, limit: int) -> list[tuple[int, int]]:
     rien convertir. Les occurrences qui se chevauchent sont toutes trouvées (« aa » est
     à deux endroits dans « aaa »), et la recherche s'arrête dès que `limit` est atteint."""
     pattern = r"\r?\n".join(re.escape(line) for line in block.split("\n"))
+    if block.startswith("\n"):
+        # Sans cela, le `\r?` facultatif laisserait aussi correspondre au `\n` d'un CRLF,
+        # donc deux fois au même endroit.
+        pattern = rf"(?<!\r){pattern}"
     # L'anticipation `(?=...)` n'avance pas : les occurrences chevauchantes sont vues.
     matches = re.finditer(f"(?=({pattern}))", raw)
     return [match.span(1) for match in islice(matches, limit)]
