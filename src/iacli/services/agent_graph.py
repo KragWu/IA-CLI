@@ -22,14 +22,14 @@ class AgentState(TypedDict, total=False):
 
     `messages` : historique (les nouveaux messages sont ajoutés, pas remplacés) ;
     `tool_iterations` : exécutions d'outils déjà faites pendant ce tour ;
-    `evaluation` : résultat de l'évaluateur ; `error` : motif d'arrêt anticipé ;
+    `evaluation` : résultat de l'évaluateur ; `error` : exception qui arrête le tour (levée par l'évaluateur) ;
     `malformed_streak` : appels d'outil illisibles consécutifs (0 si le dernier
     appel du modèle était lisible) ; le modèle doit alors corriger son appel."""
 
     messages: Annotated[list[AnyMessage], add_messages]
     tool_iterations: int
     evaluation: object
-    error: str
+    error: Exception
     malformed_streak: int
 
 
@@ -93,7 +93,9 @@ def build_control_graph(
                 on_agent_timing(perf_counter() - started)
         response = normalize_text_tool_call(raw_response, tool_names)
         iterations = state.get("tool_iterations", 0)
-        limit_error = f"Limite de {max_iterations} exécutions d'outils atteinte."
+        limit_error = MaxToolIterationsError(
+            f"Limite de {max_iterations} exécutions d'outils atteinte."
+        )
 
         if isinstance(response, MalformedToolCall):
             # Le modèle voit son appel raté et l'erreur, puis réessaie (borné par
@@ -105,7 +107,7 @@ def build_control_graph(
                 "malformed_streak": streak,
             }
             if streak > max_malformed_retries:
-                updates["error"] = (
+                updates["error"] = MalformedToolCallsError(
                     f"Le modèle a produit {streak} appels d'outil illisibles de suite."
                 )
             return updates
@@ -143,9 +145,7 @@ def build_control_graph(
 
     def evaluate(state: AgentState) -> dict[str, Any]:
         if error := state.get("error"):
-            if state.get("malformed_streak", 0) > max_malformed_retries:
-                raise MalformedToolCallsError(error)
-            raise MaxToolIterationsError(error)
+            raise error
         return {"evaluation": evaluator(state)}
 
     graph = StateGraph(AgentState)
