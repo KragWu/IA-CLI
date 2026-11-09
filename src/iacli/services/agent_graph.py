@@ -24,13 +24,16 @@ class AgentState(TypedDict, total=False):
     `tool_iterations` : exécutions d'outils déjà faites pendant ce tour ;
     `evaluation` : résultat de l'évaluateur ; `error` : exception qui arrête le tour (levée par l'évaluateur) ;
     `malformed_streak` : appels d'outil illisibles consécutifs (0 si le dernier
-    appel du modèle était lisible) ; le modèle doit alors corriger son appel."""
+    appel du modèle était lisible) ; le modèle doit alors corriger son appel ;
+    `malformed_truncated` : tous les appels illisibles de la série ont été coupés par
+    la limite de tokens."""
 
     messages: Annotated[list[AnyMessage], add_messages]
     tool_iterations: int
     evaluation: object
     error: Exception
     malformed_streak: int
+    malformed_truncated: bool
 
 
 Evaluator = Callable[[AgentState], object]
@@ -106,15 +109,19 @@ def build_control_graph(
             # Le modèle voit son appel raté et l'erreur, puis réessaie (borné par
             # `max_malformed_retries` pour ne pas boucler indéfiniment).
             streak = state.get("malformed_streak", 0) + 1
+            all_truncated = response.truncated and (
+                streak == 1 or state.get("malformed_truncated", False)
+            )
             updates: dict[str, Any] = {
                 "messages": [raw_response, make_tool_call_feedback(response.error)],
                 "tool_iterations": iterations,
                 "malformed_streak": streak,
+                "malformed_truncated": all_truncated,
             }
             if streak > max_malformed_retries:
                 updates["error"] = MalformedToolCallsError(
                     _truncated_message(streak)
-                    if response.truncated
+                    if all_truncated
                     else f"Le modèle a produit {streak} appels d'outil illisibles de suite."
                 )
             return updates
@@ -123,6 +130,7 @@ def build_control_graph(
             "messages": [response],
             "tool_iterations": iterations,
             "malformed_streak": 0,
+            "malformed_truncated": False,
         }
         if (
             isinstance(response, AIMessage)

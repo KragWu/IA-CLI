@@ -530,3 +530,52 @@ def test_final_answer_quoting_a_tool_call_in_code_is_not_executed():
     assert len(model.calls) == 1
     assert not any(isinstance(message, ToolMessage) for message in result["messages"])
     assert result["messages"][-1].content == answer
+
+
+SYNTAX_ERROR = AIMessage(content="<tool_call>{oups</tool_call>")
+
+
+def _failure_of(responses, max_malformed_retries):
+    model = FakeChatModel(responses)
+    graph = build_control_graph(
+        model,
+        [read_file],
+        lambda _state: True,
+        max_malformed_retries=max_malformed_retries,
+    )
+    with pytest.raises(MalformedToolCallsError) as error:
+        graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+    return str(error.value)
+
+
+def test_mixed_syntax_and_truncation_failures_do_not_blame_the_token_limit():
+    message = _failure_of(
+        [SYNTAX_ERROR, SYNTAX_ERROR, CUT_BY_TOKEN_LIMIT, CUT_BY_TOKEN_LIMIT],
+        max_malformed_retries=3,
+    )
+
+    assert "limite de tokens" not in message
+    assert "4 appels d'outil illisibles" in message
+
+
+def test_truncation_followed_by_a_syntax_error_does_not_blame_the_token_limit():
+    message = _failure_of(
+        [CUT_BY_TOKEN_LIMIT, CUT_BY_TOKEN_LIMIT, SYNTAX_ERROR],
+        max_malformed_retries=2,
+    )
+
+    assert "limite de tokens" not in message
+
+
+def test_a_valid_response_resets_the_truncation_tracking():
+    message = _failure_of(
+        [
+            SYNTAX_ERROR,
+            AIMessage(content=VALID_CALL),
+            CUT_BY_TOKEN_LIMIT,
+            CUT_BY_TOKEN_LIMIT,
+        ],
+        max_malformed_retries=1,
+    )
+
+    assert "limite de tokens" in message
