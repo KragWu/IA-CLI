@@ -916,6 +916,58 @@ def test_write_file_warns_before_converting_a_mixed_line_ending_file(tmp_path):
     assert target.read_bytes() == b"un\r\ndeux\r\ntrois\r\nquatre\r\n"
 
 
+def test_write_file_keeps_lf_for_a_file_that_is_mostly_lf(tmp_path):
+    target = tmp_path / "presque_lf.txt"
+    target.write_bytes(b"un\ndeux\r\ntrois\nquatre\n")
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    tools["write_file"].invoke(
+        {"path": "presque_lf.txt", "content": "un\ndeux\ntrois\nquatre\ncinq\n"}
+    )
+
+    assert "1 CRLF, 3 LF" in diffs[0]
+    assert "converties en LF" in diffs[0]
+    assert target.read_bytes() == b"un\ndeux\ntrois\nquatre\ncinq\n"
+
+
+def test_write_file_keeps_crlf_for_a_file_that_is_mostly_crlf(tmp_path):
+    target = tmp_path / "presque_crlf.txt"
+    target.write_bytes(b"un\r\ndeux\ntrois\r\nquatre\r\n")
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    tools["write_file"].invoke(
+        {"path": "presque_crlf.txt", "content": "un\ndeux\ntrois\nquatre\ncinq\n"}
+    )
+
+    assert "3 CRLF, 1 LF" in diffs[0]
+    assert "converties en CRLF" in diffs[0]
+    assert target.read_bytes() == b"un\r\ndeux\r\ntrois\r\nquatre\r\ncinq\r\n"
+
+
+def test_write_file_uses_the_default_line_ending_when_there_is_no_majority(tmp_path):
+    target = tmp_path / "egalite.txt"
+    target.write_bytes(b"un\r\ndeux\n")
+    diffs = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda _path, diff: diffs.append(diff) or True,
+    )
+
+    tools["write_file"].invoke({"path": "egalite.txt", "content": "un\ndeux\ntrois\n"})
+
+    assert "1 CRLF, 1 LF" in diffs[0]
+    assert "converties en LF" in diffs[0]
+    assert target.read_bytes() == b"un\ndeux\ntrois\n"
+
+
 def test_write_file_does_not_warn_for_uniform_line_endings(tmp_path):
     (tmp_path / "lf.txt").write_bytes(b"un\ndeux\n")
     (tmp_path / "crlf.txt").write_bytes(b"un\r\ndeux\r\n")
