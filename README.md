@@ -130,9 +130,13 @@ Détails de fonctionnement :
   à l'entrée du chat, avec un délai maximal de 600 secondes (l'arbre de processus est alors arrêté). La réponse
   commence par `Code de sortie : N`. La sortie standard et la sortie d'erreur sont tronquées séparément
   (`[sortie tronquée]`) afin qu'une longue sortie n'efface pas l'erreur.
-- **Appel d'outil écrit en JSON dans le texte** : certains petits modèles renvoient `{"name":"outil","arguments":{...}}`
+- **Appel d'outil écrit dans le texte** : certains petits modèles renvoient `{"name":"outil","arguments":{...}}`
   dans leur réponse (éventuellement plusieurs objets, ou dans un bloc ```` ```json ````) au lieu d'utiliser le mécanisme
   de *tool calling*. IA-CLI reconnaît ce format pour les outils connus et le traite comme un véritable appel d'outil.
+  Le format à balises `<tool_call>{"name":"outil","arguments":{...}}</tool_call>` est aussi reconnu ; un outil inconnu
+  y reçoit la réponse d'erreur habituelle. Une balise `<tool_call>` illisible (JSON invalide, balise non refermée,
+  `name` ou `arguments` incorrect) n'est pas affichée comme réponse : l'erreur est renvoyée au modèle pour qu'il
+  corrige son appel (chaque tentative compte dans la limite d'exécutions).
 - **Limite d'exécutions** : un tour s'arrête avec une erreur après 25 exécutions d'outils consécutives.
 
 ### Ce qui s'affiche pendant un tour
@@ -337,7 +341,9 @@ START ─► agent ──(appel d'outil)──► action ─┐
           └─(réponse sans outil, ou limite atteinte)─► evaluator ─► END
 ```
 
-L'agent route les demandes d'outils vers leur exécution, puis réinjecte les `ToolMessage` au modèle. Une réponse sans
+L'agent route les demandes d'outils vers leur exécution, puis réinjecte les `ToolMessage` au modèle. La conversion des
+appels écrits dans le texte est faite par `iacli.services.tool_call_parser` (logique pure) ; un appel `<tool_call>`
+illisible ajoute un message d'erreur à l'historique et renvoie la main au modèle (arête `agent` → `agent`). Une réponse sans
 outil passe par l'évaluateur (`evaluate_response` dans `chat.py` : refuse une réponse vide ou qui garde des appels
 d'outils en attente) avant la fin du graphe. La limite par défaut est de 25 exécutions d'outils et peut être ajustée avec
 `max_iterations` ; au-delà, l'évaluateur lève `MaxToolIterationsError`.
