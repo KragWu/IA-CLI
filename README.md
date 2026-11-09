@@ -140,7 +140,11 @@ Détails de fonctionnement :
   comme un appel raté). Un appel illisible (JSON invalide, balise non refermée, `name` absent, `arguments` qui n'est
   pas un objet) n'est pas affiché comme réponse : l'erreur est renvoyée au modèle pour qu'il corrige son appel. Après
   3 tentatives illisibles consécutives, le tour s'arrête avec une erreur ; ces tentatives ne comptent pas dans la
-  limite d'exécutions d'outils et l'historique du tour en échec est nettoyé.
+  limite d'exécutions d'outils. Les appels illisibles et les corrections demandées au modèle sont retirés de
+  l'historique en fin de tour, qu'il réussisse ou échoue. Si la réponse a été coupée par la limite de tokens
+  (`done_reason` = `length`) au milieu d'un appel, le modèle est invité à faire un appel plus court (par exemple
+  découper un gros `write_file`) ; après 3 coupures consécutives, l'erreur affichée suggère d'augmenter `num_ctx`
+  dans `config.toml` ou de demander une action plus petite. Une réponse finale en prose coupée n'est pas détectée.
 - **Limite d'exécutions** : un tour s'arrête avec une erreur après 25 exécutions d'outils consécutives.
 
 ### Ce qui s'affiche pendant un tour
@@ -349,7 +353,7 @@ L'agent route les demandes d'outils vers leur exécution, puis réinjecte les `T
 appels écrits dans le texte est faite par `iacli.services.tool_call_parser` (logique pure) ; un appel `<tool_call>`
 illisible ajoute un message d'erreur (un `HumanMessage` marqué, `make_tool_call_feedback`) à l'historique et renvoie la
 main au modèle (arête `agent` → `agent`), dans la limite de `max_malformed_retries` (3) réessais consécutifs, au-delà
-desquels le graphe lève `MalformedToolCallsError`. Une réponse sans
+desquels le graphe lève `MalformedToolCallsError` (l'état du graphe porte l'exception qui arrête le tour). Une réponse sans
 outil passe par l'évaluateur (`evaluate_response` dans `chat.py` : refuse une réponse vide ou qui garde des appels
 d'outils en attente) avant la fin du graphe. La limite par défaut est de 25 exécutions d'outils et peut être ajustée avec
 `max_iterations` ; au-delà, l'évaluateur lève `MaxToolIterationsError`.
