@@ -120,9 +120,10 @@ class _TextFile:
         """`text` (en LF ou CRLF) avec les fins de ligne de ce fichier, prêt à être écrit."""
         return text.replace("\r\n", "\n").replace("\n", self.newline)
 
-
-# Fichier qui n'existe pas encore : texte vide, fins de ligne LF, pas d'empreinte.
-_NEW_FILE = _TextFile(text="", raw="", newline="\n", warning="", digest="")
+    @classmethod
+    def empty(cls, newline: str) -> "_TextFile":
+        """Fichier qui n'existe pas encore : texte vide, `newline` par défaut, pas d'empreinte."""
+        return cls(text="", raw="", newline=newline, warning="", digest="")
 
 
 def _digest(content: bytes) -> str:
@@ -240,6 +241,7 @@ def create_workspace_tools(
     confirm_file_write: Callable[[str, str], bool],
     confirm_shell_command: Callable[[str, Path], bool],
     on_action_timing: Callable[[str, float], None] | None = None,
+    default_newline: str = "\n",
 ) -> list[BaseTool]:
     """Crée les six outils (`read_file`, `list_files`, `search_files`, `write_file`,
     `edit_file`, `run_shell`).
@@ -247,7 +249,16 @@ def create_workspace_tools(
     `confirm_file_write(chemin, diff)` et `confirm_shell_command(commande, dossier)`
     renvoient True si l'utilisateur accepte. `on_action_timing(outil, secondes)` est
     appelé après chaque outil. Une erreur levée par un outil est renvoyée au modèle.
+
+    `default_newline` (`"\\n"` ou `"\\r\\n"`) est la fin de ligne des nouveaux fichiers, et
+    de ceux dont les fins de ligne ne permettent pas de trancher (vides, sans fin de
+    ligne, autant de CRLF que de LF). Un fichier existant garde sa fin de ligne majoritaire.
     """
+    if default_newline not in ("\n", "\r\n"):
+        raise ValueError(
+            "default_newline doit valoir '\\n' (LF) ou '\\r\\n' (CRLF), "
+            f"pas {default_newline!r}."
+        )
     root = workspace.resolve()
 
     def measure_action(
@@ -418,7 +429,7 @@ def create_workspace_tools(
         if file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour modification : {path}")
         try:
-            return _parse_text(file_path.read_bytes())
+            return _parse_text(file_path.read_bytes(), default_newline)
         except UnicodeDecodeError as error:
             raise ValueError(
                 f"Le fichier existant n'est pas encodé en UTF-8 : {path}"
@@ -482,7 +493,9 @@ def create_workspace_tools(
             raise IsADirectoryError(f"Le chemin n'est pas un fichier : {path}")
 
         original = (
-            read_existing_text(file_path, path) if file_path.exists() else _NEW_FILE
+            read_existing_text(file_path, path)
+            if file_path.exists()
+            else _TextFile.empty(default_newline)
         )
         return confirm_and_save(
             file_path, original, original.to_disk(content), "Fichier enregistré"

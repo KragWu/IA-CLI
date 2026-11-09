@@ -3,7 +3,13 @@
 import tomllib
 from pathlib import Path
 
-from iacli.domain.config import DEFAULT_NUM_CTX, ConfigurationState, OllamaSettings
+from iacli.domain.config import (
+    DEFAULT_NUM_CTX,
+    ConfigurationState,
+    EndOfLine,
+    FileSettings,
+    OllamaSettings,
+)
 
 # Contenu écrit dans `config.toml` à la première exécution.
 DEFAULT_CONFIG = """[ollama]
@@ -13,6 +19,11 @@ model = "qwen2.5-coder:7b"
 # Fenêtre de contexte demandée à Ollama (en tokens). Elle ne doit pas dépasser
 # le contexte maximal du modèle choisi.
 num_ctx = 18000
+
+[files]
+# Fin de ligne des nouveaux fichiers : "auto" (celle du système), "lf" ou "crlf".
+# Un fichier existant garde sa fin de ligne la plus fréquente.
+end_of_line = "auto"
 """
 
 # Contenu initial de `IACLI.md`, injecté dans l'invite système du chat.
@@ -28,6 +39,11 @@ _DEFAULT_OLLAMA = {
     "base_url": "http://localhost:11434",
     "registry_url": "https://registry.ollama.ai",
     "model": "qwen2.5-coder:7b",
+}
+# Valeurs renvoyées quand `config.toml` est illisible (`num_ctx` ajouté à part).
+_DEFAULTS: dict[str, str | int] = {
+    **_DEFAULT_OLLAMA,
+    "end_of_line": EndOfLine.AUTO.value,
 }
 
 
@@ -55,11 +71,12 @@ class FileConfigurationGateway:
             default_model=str(values["model"]),
             num_ctx=int(values["num_ctx"]),
         )
-        return ConfigurationState(target, settings, tuple(warnings))
+        files = FileSettings(end_of_line=EndOfLine(str(values["end_of_line"])))
+        return ConfigurationState(target, settings, tuple(warnings), files)
 
     @staticmethod
     def _load_values(config_path: Path) -> tuple[dict[str, str | int], list[str]]:
-        """Valide la section [ollama] ; renvoie (valeurs, avertissements).
+        """Valide les sections [ollama] et [files] ; renvoie (valeurs, avertissements).
 
         À la première erreur, toutes les valeurs par défaut sont renvoyées avec le message d'erreur."""
         try:
@@ -84,6 +101,20 @@ class FileConfigurationGateway:
                     "La valeur ollama.num_ctx doit être un entier strictement positif."
                 )
             values["num_ctx"] = num_ctx
+            files = document.get("files", {})
+            if not isinstance(files, dict):
+                raise ValueError("La section [files] doit être une table TOML.")
+            end_of_line = files.get("end_of_line", EndOfLine.AUTO.value)
+            choices = [choice.value for choice in EndOfLine]
+            if (
+                not isinstance(end_of_line, str)
+                or end_of_line.strip().lower() not in choices
+            ):
+                quoted = ", ".join(f'"{choice}"' for choice in choices)
+                raise ValueError(
+                    f"La valeur files.end_of_line doit être l'une de : {quoted}."
+                )
+            values["end_of_line"] = end_of_line.strip().lower()
         except (OSError, tomllib.TOMLDecodeError, ValueError) as error:
-            return {**_DEFAULT_OLLAMA, "num_ctx": DEFAULT_NUM_CTX}, [str(error)]
+            return {**_DEFAULTS, "num_ctx": DEFAULT_NUM_CTX}, [str(error)]
         return values, []
