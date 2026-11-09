@@ -12,6 +12,7 @@ import os
 import signal
 import subprocess
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
@@ -95,6 +96,38 @@ def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
     stdout_part = _truncate(stdout, stdout_budget)
     stderr_part = _truncate(stderr, budget - len(stdout_part))
     return header + stdout_part + stderr_part
+
+
+@dataclass(frozen=True)
+class _TextFile:
+    """Texte d'un fichier normalisé en LF, avec les fins de ligne à lui rendre à l'écriture."""
+
+    text: str
+    # Fins de ligne à conserver : CRLF dès que le fichier en contient une.
+    newline: str
+    # Avertissement affiché avant le diff si le fichier mélange CRLF et LF ; vide sinon.
+    warning: str
+
+
+# Fichier qui n'existe pas encore : texte vide, fins de ligne LF.
+_NEW_FILE = _TextFile(text="", newline="\n", warning="")
+
+
+def _parse_text(raw_content: str) -> _TextFile:
+    """Normalise en LF le contenu brut d'un fichier et en déduit ses fins de ligne."""
+    crlf_count = raw_content.count("\r\n")
+    lf_count = raw_content.count("\n") - crlf_count
+    text = raw_content.replace("\r\n", "\n")
+    if not crlf_count:
+        return _TextFile(text=text, newline="\n", warning="")
+    warning = ""
+    if lf_count:
+        warning = (
+            "Attention : le fichier contient des fins de ligne mixtes "
+            f"({crlf_count} CRLF, {lf_count} LF) ; toutes seront converties "
+            "en CRLF.\n"
+        )
+    return _TextFile(text=text, newline="\r\n", warning=warning)
 
 
 # Signale, dans un diff, une dernière ligne sans retour à la ligne (comme git).
@@ -318,45 +351,32 @@ def create_workspace_tools(
                 f"({content_bytes} octets, maximum {MAX_FILE_BYTES})"
             )
 
-    def read_existing_text(file_path: Path, path: str) -> str:
-        """Contenu brut (fins de ligne conservées) d'un fichier existant du projet."""
+    def read_existing_text(file_path: Path, path: str) -> _TextFile:
+        """Lit un fichier existant du projet (taille et encodage vérifiés)."""
         if file_path.stat().st_size > MAX_FILE_BYTES:
             raise ValueError(f"Fichier trop volumineux pour modification : {path}")
         try:
             with file_path.open(encoding="utf-8", newline="") as existing:
-                return existing.read()
+                return _parse_text(existing.read())
         except UnicodeDecodeError as error:
             raise ValueError(
                 f"Le fichier existant n'est pas encodé en UTF-8 : {path}"
             ) from error
 
-    def detect_line_endings(raw_content: str) -> tuple[str, str]:
-        """Fins de ligne à conserver (CRLF dès qu'il y en a une) et avertissement éventuel."""
-        crlf_count = raw_content.count("\r\n")
-        lf_count = raw_content.count("\n") - crlf_count
-        if not crlf_count:
-            return "\n", ""
-        warning = ""
-        if lf_count:
-            warning = (
-                "Attention : le fichier contient des fins de ligne mixtes "
-                f"({crlf_count} CRLF, {lf_count} LF) ; toutes seront converties "
-                "en CRLF.\n"
-            )
-        return "\r\n", warning
-
     def confirm_and_save(
         file_path: Path,
-        previous: str,
+        original: _TextFile,
         proposed: str,
-        newline: str,
-        warning: str,
         saved_message: str,
     ) -> str:
-        """Affiche le diff `previous` -> `proposed` (textes en LF), puis écrit après accord."""
+        """Affiche le diff `original` -> `proposed`, puis écrit après accord.
+
+        `proposed` peut contenir des CRLF : il est normalisé en LF, puis écrit avec
+        les fins de ligne de `original`."""
+        proposed = proposed.replace("\r\n", "\n")
         relative_path = file_path.relative_to(root).as_posix()
         diff = _unified_diff(
-            previous,
+            original.text,
             proposed,
             fromfile=f"a/{relative_path}",
             tofile=f"b/{relative_path}",
@@ -372,12 +392,12 @@ def create_workspace_tools(
                 f"maximum {MAX_TOOL_OUTPUT_CHARS}). Découpez-la en plusieurs "
                 "modifications plus petites."
             )
-        if not confirm_file_write(relative_path, warning + diff):
+        if not confirm_file_write(relative_path, original.warning + diff):
             return f"Modification refusée par l'utilisateur : {relative_path}"
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with file_path.open("w", encoding="utf-8", newline="") as target:
-            target.write(proposed.replace("\n", newline))
+            target.write(proposed.replace("\n", original.newline))
         return f"{saved_message} : {relative_path}"
 
     @tool
@@ -389,20 +409,10 @@ def create_workspace_tools(
             raise IsADirectoryError(f"Le chemin n'est pas un fichier : {path}")
         check_content_size(path, content)
 
-        newline, warning = "\n", ""
-        previous = ""
-        if file_path.exists():
-            existing_content = read_existing_text(file_path, path)
-            newline, warning = detect_line_endings(existing_content)
-            previous = existing_content.replace("\r\n", "\n")
-        return confirm_and_save(
-            file_path,
-            previous,
-            content.replace("\r\n", "\n"),
-            newline,
-            warning,
-            "Fichier enregistré",
+        original = (
+            read_existing_text(file_path, path) if file_path.exists() else _NEW_FILE
         )
+        return confirm_and_save(file_path, original, content, "Fichier enregistré")
 
     @tool
     @measure_action("edit_file")
@@ -424,17 +434,15 @@ def create_workspace_tools(
                 "Utilisez write_file pour créer un fichier."
             )
 
-        raw_content = read_existing_text(file_path, path)
-        newline, warning = detect_line_endings(raw_content)
-        if warning:
+        original = read_existing_text(file_path, path)
+        if original.warning:
             raise ValueError(
                 f"Le fichier {path} contient des fins de ligne mixtes (CRLF et LF) : "
                 "edit_file refuse de le modifier car il changerait aussi les lignes "
                 "voisines. Utilisez write_file pour le réécrire en entier."
             )
-        previous = raw_content.replace("\r\n", "\n")
         old_block = old_string.replace("\r\n", "\n")
-        occurrences = _count_occurrences(previous, old_block)
+        occurrences = _count_occurrences(original.text, old_block)
         if occurrences == 0:
             raise ValueError(
                 f"old_string introuvable dans {path} : il doit correspondre "
@@ -446,11 +454,9 @@ def create_workspace_tools(
                 f"old_string apparaît {occurrences} fois dans {path} : ajoutez "
                 "des lignes voisines pour l'identifier de façon unique."
             )
-        proposed = previous.replace(old_block, new_string.replace("\r\n", "\n"), 1)
+        proposed = original.text.replace(old_block, new_string.replace("\r\n", "\n"), 1)
         check_content_size(path, proposed)
-        return confirm_and_save(
-            file_path, previous, proposed, newline, warning, "Fichier modifié"
-        )
+        return confirm_and_save(file_path, original, proposed, "Fichier modifié")
 
     @tool
     @measure_action("run_shell")
