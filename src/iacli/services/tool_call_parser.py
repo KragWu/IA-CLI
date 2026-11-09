@@ -66,13 +66,23 @@ _TRUNCATED_REASON = (
 )
 
 
-def _malformed(reason: str, *, truncated: bool = False) -> MalformedToolCall:
-    if truncated:
-        reason = _TRUNCATED_REASON
-    return MalformedToolCall(
-        f"Ton appel d'outil <tool_call> est invalide : {reason} {_TAG_EXPECTED_FORMAT}",
-        truncated=truncated,
+def _error_message(reason: str) -> str:
+    return (
+        f"Ton appel d'outil <tool_call> est invalide : {reason} {_TAG_EXPECTED_FORMAT}"
     )
+
+
+def _malformed(reason: str) -> MalformedToolCall:
+    return MalformedToolCall(_error_message(reason))
+
+
+def _truncated() -> MalformedToolCall:
+    return MalformedToolCall(_error_message(_TRUNCATED_REASON), truncated=True)
+
+
+def _malformed_or_truncated(reason: str, truncated: bool) -> MalformedToolCall:
+    """Un appel coupé par la limite de tokens se corrige autrement qu'une erreur de syntaxe."""
+    return _truncated() if truncated else _malformed(reason)
 
 
 def _skip_spaces(text: str, position: int) -> int:
@@ -102,19 +112,18 @@ def _parse_tagged_tool_calls(
         start = _skip_spaces(text, opening + len(_TOOL_CALL_OPEN))
         if truncated and start == len(text):
             # Coupé juste après la balise ouvrante : rien ne dit encore que c'est du JSON.
-            return _malformed("", truncated=True)
+            return _truncated()
         if text[start : start + 1] not in ("{", "["):
             position = start
             continue
         try:
             payload, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as error:
-            return _malformed(f"JSON illisible ({error}).", truncated=truncated)
+            return _malformed_or_truncated(f"JSON illisible ({error}).", truncated)
         end = _skip_spaces(text, end)
         if not text.startswith(_TOOL_CALL_CLOSE, end):
-            return _malformed(
-                "une balise <tool_call> n'est pas refermée par </tool_call>.",
-                truncated=truncated,
+            return _malformed_or_truncated(
+                "une balise <tool_call> n'est pas refermée par </tool_call>.", truncated
             )
         position = end + len(_TOOL_CALL_CLOSE)
         if not isinstance(payload, dict):
