@@ -14,7 +14,7 @@ import re
 import signal
 import subprocess
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import wraps
 from itertools import islice
 from pathlib import Path
@@ -110,8 +110,9 @@ class _TextFile:
     raw: str
     # Fins de ligne à conserver : les plus fréquentes du fichier (à égalité : par défaut).
     newline: str
-    # Avertissement affiché avant le diff si le fichier mélange CRLF et LF ; vide sinon.
-    warning: str
+    # Nombre de fins de ligne CRLF et LF du fichier lu.
+    crlf_count: int
+    lf_count: int
     # Empreinte du contenu brut lu (vide pour un fichier à créer) : sert à détecter un
     # fichier modifié par ailleurs entre sa lecture et son écriture.
     digest: str
@@ -120,10 +121,24 @@ class _TextFile:
         """`text` (en LF ou CRLF) avec les fins de ligne de ce fichier, prêt à être écrit."""
         return text.replace("\r\n", "\n").replace("\n", self.newline)
 
+    def conversion_warning(self) -> str:
+        """Avertissement à afficher avant le diff d'une réécriture complète : si le fichier
+        mélange CRLF et LF, toutes ses lignes prendront la fin de ligne majoritaire. Vide
+        sinon. Ne vaut pas pour une édition ciblée, qui conserve les autres lignes."""
+        if not (self.crlf_count and self.lf_count):
+            return ""
+        return (
+            "Attention : le fichier contient des fins de ligne mixtes "
+            f"({self.crlf_count} CRLF, {self.lf_count} LF) ; toutes seront converties "
+            f"en {_newline_name(self.newline)}.\n"
+        )
+
     @classmethod
     def empty(cls, newline: str) -> "_TextFile":
         """Fichier qui n'existe pas encore : texte vide, `newline` par défaut, pas d'empreinte."""
-        return cls(text="", raw="", newline=newline, warning="", digest="")
+        return cls(
+            text="", raw="", newline=newline, crlf_count=0, lf_count=0, digest=""
+        )
 
 
 def _digest(content: bytes) -> str:
@@ -165,18 +180,12 @@ def _parse_text(raw_bytes: bytes, default_newline: str = "\n") -> _TextFile:
         newline = "\n"
     else:
         newline = default_newline
-    warning = ""
-    if crlf_count and lf_count:
-        warning = (
-            "Attention : le fichier contient des fins de ligne mixtes "
-            f"({crlf_count} CRLF, {lf_count} LF) ; toutes seront converties "
-            f"en {_newline_name(newline)}.\n"
-        )
     return _TextFile(
         text=raw_content.replace("\r\n", "\n"),
         raw=raw_content,
         newline=newline,
-        warning=warning,
+        crlf_count=crlf_count,
+        lf_count=lf_count,
         digest=_digest(raw_bytes),
     )
 
@@ -444,11 +453,14 @@ def create_workspace_tools(
         original: _TextFile,
         written: str,
         saved_message: str,
+        warning: str = "",
     ) -> str:
         """Affiche le diff `original` -> `written`, puis écrit `written` tel quel après accord.
 
         `written` est le contenu exact du fichier (fins de ligne comprises) : le diff est
-        calculé sur les deux textes normalisés en LF."""
+        calculé sur les deux textes normalisés en LF. `warning`, s'il n'est pas vide, est
+        affiché avant le diff ; il signale aussi qu'une réécriture au même texte sert à
+        normaliser les fins de ligne (le diff est alors vide)."""
         proposed = written.replace("\r\n", "\n")
         relative_path = file_path.relative_to(root).as_posix()
         # Taille du texte tel qu'il sera écrit (CRLF compris), pas de sa version en LF.
@@ -459,7 +471,7 @@ def create_workspace_tools(
             fromfile=f"a/{relative_path}",
             tofile=f"b/{relative_path}",
         )
-        if not diff and original.warning:
+        if not diff and warning:
             # Même texte mais fins de ligne mixtes : réécrire sert à les normaliser.
             diff = f"Normalisation des fins de ligne : {relative_path}\n"
         elif not diff and file_path.exists():
@@ -473,7 +485,7 @@ def create_workspace_tools(
                 f"maximum {MAX_TOOL_OUTPUT_CHARS}). Découpez-la en plusieurs "
                 "modifications plus petites."
             )
-        if not confirm_file_write(relative_path, original.warning + diff):
+        if not confirm_file_write(relative_path, warning + diff):
             return f"Modification refusée par l'utilisateur : {relative_path}"
         if _file_digest(file_path) != original.digest:
             # Le fichier a été créé, modifié ou supprimé pendant la confirmation :
@@ -502,7 +514,11 @@ def create_workspace_tools(
             else _TextFile.empty(default_newline)
         )
         return confirm_and_save(
-            file_path, original, original.to_disk(content), "Fichier enregistré"
+            file_path,
+            original,
+            original.to_disk(content),
+            "Fichier enregistré",
+            warning=original.conversion_warning(),
         )
 
     @tool
@@ -545,10 +561,7 @@ def create_workspace_tools(
         written = (
             original.raw[:start] + original.to_disk(new_string) + original.raw[end:]
         )
-        # L'avertissement « tout sera converti » ne vaut pas pour une édition ciblée.
-        return confirm_and_save(
-            file_path, replace(original, warning=""), written, "Fichier modifié"
-        )
+        return confirm_and_save(file_path, original, written, "Fichier modifié")
 
     @tool
     @measure_action("run_shell")
