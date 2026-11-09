@@ -7,6 +7,7 @@ from iacli.services.agent_graph import (
     MaxToolIterationsError,
     build_control_graph,
 )
+from iacli.services.tool_call_parser import is_tool_call_feedback
 from tests.fakes import FakeChatModel
 
 
@@ -388,6 +389,18 @@ BROKEN = "<tool_call>{oups</tool_call>"
 VALID_CALL = (
     '<tool_call>{"name": "read_file", "arguments": {"path": "README.md"}}</tool_call>'
 )
+
+
+def test_malformed_tool_call_feedback_is_marked_as_not_coming_from_the_user():
+    model = FakeChatModel([AIMessage(content=BROKEN), AIMessage(content="Terminé.")])
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    feedback = model.calls[1][-1]
+    assert isinstance(feedback, HumanMessage)
+    assert is_tool_call_feedback(feedback)
+    assert not is_tool_call_feedback(HumanMessage(content="Lis README.md"))
 
 
 def test_malformed_tool_call_loop_is_stopped_by_its_own_retry_limit():

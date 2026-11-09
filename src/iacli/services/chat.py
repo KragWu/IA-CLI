@@ -15,6 +15,7 @@ from langchain_core.messages import (
 
 from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
+from iacli.services.tool_call_parser import is_tool_call_feedback
 
 # Nombre maximal d'exécutions d'outils par tour avant d'abandonner (évite les boucles).
 MAX_TOOL_ITERATIONS = 25
@@ -211,16 +212,20 @@ def _without_incomplete_tail(
     messages: list[BaseMessage], turn_start: int
 ) -> list[BaseMessage]:
     """Retire la fin d'un tour en échec qui laisserait un historique invalide :
-    un appel d'outil sans résultat ou une réponse vide du modèle. Si le tour n'a
+    un appel d'outil sans résultat, une réponse vide du modèle ou un appel d'outil
+    illisible avec la correction qui lui répondait. Si le tour n'a
     rien produit de plus que la demande (index turn_start), celle-ci est retirée
     aussi : elle resterait sans réponse et précéderait la demande suivante."""
     kept = list(messages)
-    while (
-        kept
-        and isinstance(kept[-1], AIMessage)
-        and (kept[-1].tool_calls or not kept[-1].content)
-    ):
-        kept.pop()
+    while kept:
+        last = kept[-1]
+        if is_tool_call_feedback(last) and len(kept) >= 2:
+            # Appel illisible du modèle et correction demandée : on retire la paire.
+            del kept[-2:]
+        elif isinstance(last, AIMessage) and (last.tool_calls or not last.content):
+            kept.pop()
+        else:
+            break
     if len(kept) == turn_start + 1:
         kept.pop()
     return kept

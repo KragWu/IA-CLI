@@ -4,13 +4,17 @@ from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Annotated, Any, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from iacli.services.tool_call_parser import MalformedToolCall, normalize_text_tool_call
+from iacli.services.tool_call_parser import (
+    MalformedToolCall,
+    make_tool_call_feedback,
+    normalize_text_tool_call,
+)
 
 
 class AgentState(TypedDict, total=False):
@@ -96,7 +100,7 @@ def build_control_graph(
             # `max_malformed_retries` pour ne pas boucler indéfiniment).
             streak = state.get("malformed_streak", 0) + 1
             updates: dict[str, Any] = {
-                "messages": [raw_response, HumanMessage(content=response.error)],
+                "messages": [raw_response, make_tool_call_feedback(response.error)],
                 "tool_iterations": iterations,
                 "malformed_streak": streak,
             }

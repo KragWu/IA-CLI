@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 # Bloc de code markdown ```json ... ``` glissé par un petit modèle dans sa prose.
 _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -37,6 +37,24 @@ class MalformedToolCall:
     `error` est un message destiné au modèle pour qu'il corrige son appel."""
 
     error: str
+
+
+_FEEDBACK_KEY = "iacli_tool_call_feedback"
+
+
+def make_tool_call_feedback(error: str) -> HumanMessage:
+    """Message qui renvoie au modèle l'erreur de son appel illisible.
+
+    Il reste un `HumanMessage` (certains modèles locaux n'acceptent un message système
+    qu'en début de conversation) mais est marqué : il ne vient pas de l'utilisateur."""
+    return HumanMessage(content=error, additional_kwargs={_FEEDBACK_KEY: True})
+
+
+def is_tool_call_feedback(message: BaseMessage) -> bool:
+    """Indique si `message` a été créé par `make_tool_call_feedback`."""
+    return isinstance(message, HumanMessage) and bool(
+        message.additional_kwargs.get(_FEEDBACK_KEY)
+    )
 
 
 def _malformed(reason: str) -> MalformedToolCall:
