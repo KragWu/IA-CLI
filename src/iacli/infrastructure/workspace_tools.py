@@ -176,12 +176,15 @@ def _unified_diff(previous: str, proposed: str, fromfile: str, tofile: str) -> s
     )
 
 
-def _count_occurrences(text: str, block: str) -> int:
-    """Nombre d'occurrences de `block` dans `text`, chevauchements compris (`str.count`
-    les ignore : « aa » compte une fois dans « aaa » alors qu'il y est à deux endroits)."""
+def _count_occurrences(text: str, block: str, limit: int) -> int:
+    """Nombre d'occurrences de `block` dans `text`, chevauchements compris, plafonné à
+    `limit` (la recherche s'arrête dès qu'il est atteint).
+
+    `str.count` ignore les chevauchements : « aa » compte une fois dans « aaa » alors
+    qu'il y est à deux endroits."""
     count = 0
     position = text.find(block)
-    while position != -1:
+    while position != -1 and count < limit:
         count += 1
         position = text.find(block, position + 1)
     return count
@@ -480,7 +483,8 @@ def create_workspace_tools(
                 "voisines. Utilisez write_file pour le réécrire en entier."
             )
         old_block = old_string.replace("\r\n", "\n")
-        occurrences = _count_occurrences(original.text, old_block)
+        # Deux occurrences suffisent à conclure à l'ambiguïté : inutile de les compter toutes.
+        occurrences = _count_occurrences(original.text, old_block, limit=2)
         if occurrences == 0:
             raise ValueError(
                 f"old_string introuvable dans {path} : il doit correspondre "
@@ -489,7 +493,7 @@ def create_workspace_tools(
             )
         if occurrences > 1:
             raise ValueError(
-                f"old_string apparaît {occurrences} fois dans {path} : ajoutez "
+                f"old_string apparaît au moins {occurrences} fois dans {path} : ajoutez "
                 "des lignes voisines pour l'identifier de façon unique."
             )
         proposed = original.text.replace(old_block, new_string.replace("\r\n", "\n"), 1)
