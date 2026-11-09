@@ -414,6 +414,24 @@ def test_edit_file_keeps_lf_line_endings(tmp_path):
     assert target.read_bytes() == b"un\n2\n"
 
 
+def test_edit_file_refuses_a_file_with_mixed_line_endings(tmp_path):
+    target = tmp_path / "mixed.txt"
+    target.write_bytes(b"un\r\ndeux\r\ntrois\n")
+    confirmations = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: confirmations.append(path) or True,
+    )
+
+    with pytest.raises(ValueError, match="fins de ligne mixtes"):
+        tools["edit_file"].invoke(
+            {"path": "mixed.txt", "old_string": "un", "new_string": "1"}
+        )
+
+    assert target.read_bytes() == b"un\r\ndeux\r\ntrois\n"
+    assert confirmations == []
+
+
 def test_edit_file_rejects_result_too_large(tmp_path):
     target = tmp_path / "big.txt"
     target.write_text("debut\n", encoding="utf-8")

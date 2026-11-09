@@ -107,7 +107,8 @@ Détails de fonctionnement :
   reste du fichier. `old_string` doit correspondre exactement au texte du fichier et n'y apparaître qu'une fois : un
   bloc introuvable, présent plusieurs fois, vide ou identique à `new_string` est une erreur renvoyée au modèle, et le
   fichier reste intact. Les fins de ligne sont comparées en LF ; celles du fichier (LF ou CRLF) sont conservées.
-  `edit_file` ne crée pas de fichier (utiliser `write_file`).
+  `edit_file` ne crée pas de fichier (utiliser `write_file`) et refuse un fichier aux fins de ligne mixtes (CRLF et LF),
+  pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier.
 - **Limites de taille** : `read_file`, `search_files`, `write_file` et `edit_file` ignorent ou refusent les fichiers de plus de
   1 000 000 octets. Les sorties d'outils sont tronquées à 30 000 caractères. `list_files` s'arrête à 200 fichiers
   (`[liste limitée à 200 fichiers]`) et `search_files` à 100 correspondances
