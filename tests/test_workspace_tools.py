@@ -710,6 +710,25 @@ def test_write_file_refuses_a_file_deleted_during_confirmation(tmp_path):
     assert not target.exists()
 
 
+def test_write_file_cancels_cleanly_when_the_path_becomes_unreadable_during_confirmation(
+    tmp_path,
+):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"a\n")
+
+    def replace_by_directory_then_accept(_path, _diff):
+        target.unlink()
+        target.mkdir()
+        return True
+
+    tools = create_tools(tmp_path, confirm_write=replace_by_directory_then_accept)
+
+    result = tools["write_file"].invoke({"path": "main.py", "content": "z\n"})
+
+    assert "a changé pendant la confirmation" in result
+    assert target.is_dir()
+
+
 def test_edit_file_reports_timing(tmp_path):
     (tmp_path / "notes.txt").write_text("a", encoding="utf-8")
     timings = []
