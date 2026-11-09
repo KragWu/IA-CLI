@@ -467,3 +467,33 @@ def test_graph_rejects_limits_below_one(option):
         build_control_graph(
             FakeChatModel(), [read_file], lambda _state: True, **{option: 0}
         )
+
+
+CUT_BY_TOKEN_LIMIT = AIMessage(
+    content='<tool_call>{"name": "read_file", "arguments": {"path": "READ',
+    response_metadata={"done_reason": "length"},
+)
+
+
+def test_truncated_tool_call_tells_the_model_to_make_a_shorter_call():
+    model = FakeChatModel([CUT_BY_TOKEN_LIMIT, AIMessage(content="Terminé.")])
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    feedback = model.calls[1][-1]
+    assert is_tool_call_feedback(feedback)
+    assert "limite de tokens" in feedback.content
+
+
+def test_repeated_truncated_tool_calls_end_with_a_token_limit_error():
+    model = FakeChatModel([CUT_BY_TOKEN_LIMIT for _ in range(10)])
+    graph = build_control_graph(
+        model, [read_file], lambda _state: True, max_malformed_retries=2
+    )
+
+    with pytest.raises(MalformedToolCallsError, match="limite de tokens") as error:
+        graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert "num_ctx" in str(error.value)
+    assert len(model.calls) == 3

@@ -55,6 +55,14 @@ class MalformedToolCallsError(RuntimeError):
     """Levée quand le modèle n'arrive pas à corriger ses appels d'outil illisibles."""
 
 
+def _truncated_message(streak: int) -> str:
+    return (
+        f"Les réponses du modèle ont été coupées par la limite de tokens {streak} fois "
+        "de suite pendant un appel d'outil. Augmentez `num_ctx` dans config.toml ou "
+        "demandez une action plus petite."
+    )
+
+
 def build_control_graph(
     model: Any,
     tools: Sequence[BaseTool],
@@ -108,7 +116,9 @@ def build_control_graph(
             }
             if streak > max_malformed_retries:
                 updates["error"] = MalformedToolCallsError(
-                    f"Le modèle a produit {streak} appels d'outil illisibles de suite."
+                    _truncated_message(streak)
+                    if response.truncated
+                    else f"Le modèle a produit {streak} appels d'outil illisibles de suite."
                 )
             return updates
 

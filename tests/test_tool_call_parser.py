@@ -9,8 +9,11 @@ from iacli.services.tool_call_parser import (
 TOOLS = {"read_file", "list_files"}
 
 
-def _normalize(content):
-    return normalize_text_tool_call(AIMessage(content=content), TOOLS)
+def _normalize(content, done_reason=None):
+    metadata = {"done_reason": done_reason} if done_reason else {}
+    return normalize_text_tool_call(
+        AIMessage(content=content, response_metadata=metadata), TOOLS
+    )
 
 
 def test_fallback_xml_json_tool_call_parsing():
@@ -178,3 +181,45 @@ def test_prose_mention_before_a_real_call_does_not_hide_the_call():
 
     assert isinstance(result, AIMessage)
     assert [call["name"] for call in result.tool_calls] == ["list_files"]
+
+
+CUT_IN_JSON = '<tool_call>{"name": "write_file", "arguments": {"content": "abc'
+CUT_BEFORE_CLOSING_TAG = '<tool_call>{"name": "list_files", "arguments": {}}'
+
+
+@pytest.mark.parametrize("content", [CUT_IN_JSON, CUT_BEFORE_CLOSING_TAG])
+def test_tool_call_cut_by_the_token_limit_is_reported_as_truncated(content):
+    result = _normalize(content, done_reason="length")
+
+    assert isinstance(result, MalformedToolCall)
+    assert result.truncated
+    assert "limite de tokens" in result.error
+    assert "plus court" in result.error
+
+
+@pytest.mark.parametrize("content", [CUT_IN_JSON, CUT_BEFORE_CLOSING_TAG])
+def test_malformed_tool_call_without_truncation_keeps_the_generic_message(content):
+    result = _normalize(content, done_reason="stop")
+
+    assert isinstance(result, MalformedToolCall)
+    assert not result.truncated
+    assert "limite de tokens" not in result.error
+
+
+def test_complete_tool_call_is_kept_even_when_generation_stopped_on_length():
+    result = _normalize(
+        '<tool_call>{"name": "list_files", "arguments": {}}</tool_call>',
+        done_reason="length",
+    )
+
+    assert isinstance(result, AIMessage)
+    assert [call["name"] for call in result.tool_calls] == ["list_files"]
+
+
+def test_wrong_structure_is_not_blamed_on_truncation():
+    result = _normalize(
+        '<tool_call>{"arguments": {}}</tool_call>', done_reason="length"
+    )
+
+    assert isinstance(result, MalformedToolCall)
+    assert not result.truncated
