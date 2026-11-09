@@ -515,3 +515,18 @@ def test_tool_call_cut_right_after_the_opening_tag_is_not_a_final_answer():
     assert is_tool_call_feedback(model.calls[1][-1])
     assert "limite de tokens" in model.calls[1][-1].content
     assert result["messages"][-1].content == "Terminé."
+
+
+def test_final_answer_quoting_a_tool_call_in_code_is_not_executed():
+    answer = (
+        'Le format est `<tool_call>{"name": "read_file", '
+        '"arguments": {"path": "README.md"}}</tool_call>`.'
+    )
+    model = FakeChatModel([AIMessage(content=answer)])
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Quel format ?")]})
+
+    assert len(model.calls) == 1
+    assert not any(isinstance(message, ToolMessage) for message in result["messages"])
+    assert result["messages"][-1].content == answer

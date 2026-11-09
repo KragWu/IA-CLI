@@ -19,6 +19,10 @@ _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECAS
 _TOOL_CALL_OPEN = "<tool_call>"
 _TOOL_CALL_CLOSE = "</tool_call>"
 
+# Prochain élément qui compte pour le balayage : une balise ouvrante ou un délimiteur
+# de code markdown (bloc ``` ou extrait `...`).
+_NEXT_TOKEN = re.compile(re.escape(_TOOL_CALL_OPEN) + r"|```|`")
+
 
 def _make_tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     return {"name": name, "args": arguments, "id": str(uuid4()), "type": "tool_call"}
@@ -91,6 +95,20 @@ def _skip_spaces(text: str, position: int) -> int:
     return position
 
 
+def _end_of_markdown_code(text: str, delimiter: re.Match[str]) -> int:
+    """Position après le code markdown qui commence par `delimiter`, ou juste après le
+    délimiteur s'il n'est jamais refermé (un bloc ``` peut couvrir plusieurs lignes, un
+    extrait `...` reste sur sa ligne) : ce n'est alors que du texte ordinaire."""
+    marker = delimiter.group()
+    if marker == "```":
+        limit = len(text)
+    else:
+        newline = text.find("\n", delimiter.end())
+        limit = len(text) if newline == -1 else newline
+    closing = text.find(marker, delimiter.end(), limit)
+    return delimiter.end() if closing == -1 else closing + len(marker)
+
+
 def _parse_tagged_tool_calls(
     text: str, *, truncated: bool = False
 ) -> list[dict[str, Any]] | MalformedToolCall | None:
@@ -100,16 +118,22 @@ def _parse_tagged_tool_calls(
     inconnu.
 
     Une balise n'est une tentative d'appel que si du JSON (`{` ou `[`) la suit ; sinon
-    c'est une simple mention dans la prose, ignorée. Le JSON est lu par un décodeur et
-    non par une regex : ses chaînes peuvent donc contenir `</tool_call>`.
+    c'est une simple mention dans la prose, ignorée. Une balise citée dans du code
+    markdown (bloc ``` ou extrait `...`) est un exemple, pas un appel : elle est ignorée
+    aussi. Le texte est balayé dans l'ordre et le JSON d'une vraie balise est lu par un
+    décodeur (non par une regex ou un masquage) : ses chaînes peuvent donc contenir
+    `</tool_call>` ou du markdown.
 
     `truncated` : la génération s'est arrêtée sur la limite de tokens ; un JSON coupé
     ou une balise non refermée sont alors signalés comme tronqués."""
     decoder = json.JSONDecoder()
     calls: list[dict[str, Any]] = []
     position = 0
-    while (opening := text.find(_TOOL_CALL_OPEN, position)) != -1:
-        start = _skip_spaces(text, opening + len(_TOOL_CALL_OPEN))
+    while (token := _NEXT_TOKEN.search(text, position)) is not None:
+        if token.group() != _TOOL_CALL_OPEN:
+            position = _end_of_markdown_code(text, token)
+            continue
+        start = _skip_spaces(text, token.end())
         if truncated and start == len(text):
             # Coupé juste après la balise ouvrante : rien ne dit encore que c'est du JSON.
             return _truncated()
