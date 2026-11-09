@@ -109,7 +109,7 @@ Détails de fonctionnement :
   fichier reste intact. Les fins de ligne sont comparées en LF ; celles du fichier (LF ou CRLF) sont conservées.
   `edit_file` ne crée pas de fichier (utiliser `write_file`) et refuse un fichier aux fins de ligne mixtes (CRLF et LF),
   pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier, y compris avec le même
-  texte, ce qui normalise ses fins de ligne en CRLF après confirmation.
+  texte, ce qui normalise ses fins de ligne (sur la plus fréquente) après confirmation.
 - **Modification concurrente** : si le fichier est créé, modifié ou supprimé pendant que l'utilisateur répond à la
   confirmation, `write_file` et `edit_file` n'écrivent rien et demandent au modèle de relire le fichier.
 - **Diff** : une dernière ligne sans retour à la ligne est signalée par
@@ -121,7 +121,8 @@ Détails de fonctionnement :
   (`[résultats limités à 100 correspondances]`) : ce sont des indications de troncature, pas des erreurs.
   `search_files` signale aussi le nombre de fichiers ignorés car trop volumineux ou non UTF-8.
 - **Écriture** : un diff unifié est affiché avant confirmation. Les fins de ligne du fichier existant (LF ou CRLF)
-  sont conservées ; si le fichier mélange les deux, un avertissement est affiché et tout est converti en CRLF.
+  sont conservées ; si le fichier mélange les deux, un avertissement est affiché et tout est converti vers la fin de
+  ligne la plus fréquente (à égalité : LF).
   Une modification dont le diff dépasse 30 000 caractères est refusée : le modèle doit la découper.
 - **Commande shell** : exécutée avec le shell du système (`cmd.exe` sous Windows) dans le dossier du projet, sans accès
   à l'entrée du chat, avec un délai maximal de 600 secondes (l'arbre de processus est alors arrêté). La réponse

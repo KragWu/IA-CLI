@@ -104,7 +104,7 @@ class _TextFile:
     """Texte d'un fichier normalisé en LF, avec les fins de ligne à lui rendre à l'écriture."""
 
     text: str
-    # Fins de ligne à conserver : CRLF dès que le fichier en contient une.
+    # Fins de ligne à conserver : les plus fréquentes du fichier (à égalité : par défaut).
     newline: str
     # Avertissement affiché avant le diff si le fichier mélange CRLF et LF ; vide sinon.
     warning: str
@@ -136,26 +136,39 @@ def _file_digest(file_path: Path) -> str:
         return _UNREADABLE_DIGEST
 
 
-def _parse_text(raw_bytes: bytes) -> _TextFile:
+def _newline_name(newline: str) -> str:
+    return "CRLF" if newline == "\r\n" else "LF"
+
+
+def _parse_text(raw_bytes: bytes, default_newline: str = "\n") -> _TextFile:
     """Décode (UTF-8) les octets d'un fichier, les normalise en LF et en déduit ses fins de
-    ligne. L'empreinte porte sur les octets lus, comme celle de `_file_digest`.
+    ligne : la plus fréquente (CRLF ou LF), ou `default_newline` à égalité ou si le
+    fichier n'a aucune fin de ligne. L'empreinte porte sur les octets lus, comme celle
+    de `_file_digest`.
 
     Lève `UnicodeDecodeError` si le contenu n'est pas de l'UTF-8."""
     raw_content = raw_bytes.decode("utf-8")
     crlf_count = raw_content.count("\r\n")
     lf_count = raw_content.count("\n") - crlf_count
-    text = raw_content.replace("\r\n", "\n")
-    digest = _digest(raw_bytes)
-    if not crlf_count:
-        return _TextFile(text=text, newline="\n", warning="", digest=digest)
+    if crlf_count > lf_count:
+        newline = "\r\n"
+    elif lf_count > crlf_count:
+        newline = "\n"
+    else:
+        newline = default_newline
     warning = ""
-    if lf_count:
+    if crlf_count and lf_count:
         warning = (
             "Attention : le fichier contient des fins de ligne mixtes "
             f"({crlf_count} CRLF, {lf_count} LF) ; toutes seront converties "
-            "en CRLF.\n"
+            f"en {_newline_name(newline)}.\n"
         )
-    return _TextFile(text=text, newline="\r\n", warning=warning, digest=digest)
+    return _TextFile(
+        text=raw_content.replace("\r\n", "\n"),
+        newline=newline,
+        warning=warning,
+        digest=_digest(raw_bytes),
+    )
 
 
 # Signale, dans un diff, une dernière ligne sans retour à la ligne (comme git).
