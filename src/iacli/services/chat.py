@@ -219,7 +219,11 @@ def _without_incomplete_tail(
     kept = list(messages)
     while kept:
         last = kept[-1]
-        if is_tool_call_feedback(last) and len(kept) >= 2:
+        if (
+            is_tool_call_feedback(last)
+            and len(kept) >= 2
+            and isinstance(kept[-2], AIMessage)
+        ):
             # Appel illisible du modèle et correction demandée : on retire la paire.
             del kept[-2:]
         elif isinstance(last, AIMessage) and (last.tool_calls or not last.content):
