@@ -624,6 +624,85 @@ def test_chat_recovers_from_a_malformed_tool_call_tag(tmp_path):
     assert not any(line.startswith("erreur>") for line in output)
 
 
+def test_failed_turn_drops_malformed_tool_call_feedback_from_history(tmp_path):
+    broken = "<tool_call>{oups</tool_call>"
+
+    class AlwaysBrokenThenAnswers(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) <= 4:
+                return AIMessage(content=broken)
+            return AIMessage(content="Réponse finale.")
+
+    model = AlwaysBrokenThenAnswers()
+    prompts = iter(("première demande", "demande suivante", "/exit"))
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert any(line.startswith("erreur>") and "illisibles" in line for line in output)
+    next_turn = model.calls[4]
+    assert [
+        message.content for message in next_turn if isinstance(message, HumanMessage)
+    ] == ["demande suivante"]
+    assert not any(message.content == broken for message in next_turn)
+
+
+def test_failed_turn_keeps_tool_work_done_before_malformed_tool_calls(tmp_path):
+    (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
+    valid = (
+        '<tool_call>{"name": "read_file", "arguments": {"path": "README.md"}}'
+        "</tool_call>"
+    )
+
+    class ToolThenBroken(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(content=valid)
+            if len(self.calls) <= 5:
+                return AIMessage(content="<tool_call>{oups</tool_call>")
+            return AIMessage(content="Réponse finale.")
+
+    model = ToolThenBroken()
+    prompts = iter(("première demande", "demande suivante", "/exit"))
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=lambda _line: None,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    next_turn = model.calls[5]
+    assert any(
+        isinstance(message, ToolMessage) and message.content == "readme contents"
+        for message in next_turn
+    )
+    assert not any(
+        isinstance(message, HumanMessage) and "invalide" in message.content
+        for message in next_turn
+    )
+    assert not any("<tool_call>{oups" in str(message.content) for message in next_turn)
+
+
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
     (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("notes contents", encoding="utf-8")
