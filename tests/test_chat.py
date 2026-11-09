@@ -781,6 +781,56 @@ def test_successful_retry_does_not_leave_malformed_exchange_in_history(tmp_path)
     assert sum(line.startswith("contexte> 100 / 1 000") for line in output) == 2
 
 
+def test_chat_shows_progress_when_a_malformed_tool_call_is_retried(tmp_path):
+    class BrokenThenAnswers(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(content="<tool_call>{oups</tool_call>")
+            return AIMessage(content="Réponse finale.")
+
+    class RecordingPresenter(CliChatPresenter):
+        def __init__(self):
+            super().__init__(
+                input_fn=lambda _prompt: "",
+                output_fn=lambda _line: None,
+            )
+            self.progress_updates = []
+
+        def prompt(self):
+            return next(self.prompts)
+
+        def start(self, workspace, model):
+            self.prompts = iter(("Fais quelque chose", "/exit"))
+
+        def start_progress(self):
+            self.progress_updates.append("started")
+
+        def update_progress(self, message):
+            self.progress_updates.append(message)
+
+        def stop_progress(self):
+            self.progress_updates.append("stopped")
+
+    presenter = RecordingPresenter()
+
+    run_chat(
+        BrokenThenAnswers(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert presenter.progress_updates == [
+        "started",
+        "Appel d'outil illisible ; l'agent réessaie",
+        "Préparation de la réponse",
+        "stopped",
+    ]
+
+
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
     (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("notes contents", encoding="utf-8")
