@@ -123,7 +123,7 @@ Détails de fonctionnement :
   `search_files` signale aussi le nombre de fichiers ignorés car trop volumineux ou non UTF-8.
 - **Écriture** : un diff unifié est affiché avant confirmation. Les fins de ligne du fichier existant (LF ou CRLF)
   sont conservées ; si le fichier mélange les deux, un avertissement est affiché et tout est converti vers la fin de
-  ligne la plus fréquente (à égalité : LF).
+  ligne la plus fréquente (à égalité : celle de `end_of_line`). Un nouveau fichier prend la fin de ligne de `end_of_line`.
   Une modification dont le diff dépasse 30 000 caractères est refusée : le modèle doit la découper.
 - **Commande shell** : exécutée avec le shell du système (`cmd.exe` sous Windows) dans le dossier du projet, sans accès
   à l'entrée du chat, avec un délai maximal de 600 secondes (l'arbre de processus est alors arrêté). La réponse
@@ -166,6 +166,9 @@ base_url = "http://localhost:11434"
 registry_url = "https://registry.ollama.ai"
 model = "qwen2.5-coder:7b"
 num_ctx = 18000
+
+[files]
+end_of_line = "auto"
 ```
 
 | Clé            | Rôle                                                                                           |
@@ -174,7 +177,11 @@ num_ctx = 18000
 | `registry_url` | URL du registre des modèles, utilisée uniquement par `iacli init` pour connaître la taille d'un modèle à télécharger. |
 | `model`        | Modèle utilisé par le chat (doit gérer les outils).                                            |
 | `num_ctx`      | Fenêtre de contexte demandée à Ollama, en tokens (entier strictement positif).                 |
+| `end_of_line`  | Section `[files]` : fin de ligne des **nouveaux** fichiers, `"auto"` (celle du système : CRLF sous Windows, LF ailleurs), `"lf"` ou `"crlf"`. |
 
+- **Fins de ligne** : un fichier existant garde toujours sa fin de ligne la plus fréquente, quel que soit le réglage ou
+  le système. `end_of_line` ne s'applique qu'aux nouveaux fichiers, et aux fichiers existants qui ne permettent pas de
+  trancher (vides, sans fin de ligne, ou avec autant de CRLF que de LF).
 - Les clés absentes prennent la valeur par défaut ci-dessus ; les nouvelles valeurs sont lues à chaque lancement.
 - Une valeur plus grande de `num_ctx` consomme davantage de mémoire. Si elle dépasse le contexte maximal annoncé par
   Ollama pour le modèle, `iacli chat` affiche un avertissement et utilise ce maximum.

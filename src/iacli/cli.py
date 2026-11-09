@@ -1,12 +1,14 @@
 """Point d'entrée de la commande iacli."""
 
 import argparse
+import os
 import sys
+from functools import partial
 from pathlib import Path
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter
-from iacli.domain.config import OllamaSettings
+from iacli.domain.config import OllamaSettings, resolve_newline
 from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
 from iacli.infrastructure.system import LocalSystemGateway
@@ -98,7 +100,13 @@ def handle_chat(args: argparse.Namespace) -> None:
         instructions,
         model_name,
         presenter=CliChatPresenter(),
-        tools_factory=create_workspace_tools,
+        # Fin de ligne des nouveaux fichiers : réglage `[files] end_of_line`, sinon l'OS.
+        tools_factory=partial(
+            create_workspace_tools,
+            default_newline=resolve_newline(
+                configuration.files.end_of_line, os.linesep
+            ),
+        ),
         context_limit=num_ctx,
     )
 

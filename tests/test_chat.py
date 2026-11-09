@@ -2,6 +2,7 @@ import codecs
 import threading
 import time
 from argparse import Namespace
+from functools import partial
 from io import StringIO
 from pathlib import Path
 
@@ -10,7 +11,12 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.cli import build_parser, handle_chat
-from iacli.domain.config import ConfigurationState, OllamaSettings
+from iacli.domain.config import (
+    ConfigurationState,
+    EndOfLine,
+    FileSettings,
+    OllamaSettings,
+)
 from iacli.domain.models import ModelInfo
 from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.services.chat import run_chat
@@ -68,7 +74,18 @@ def test_init_command_still_accepts_config_dir():
     assert args.config_dir == Path("config")
 
 
-def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("end_of_line", "platform_newline", "expected_newline"),
+    [
+        (EndOfLine.AUTO, "\r\n", "\r\n"),
+        (EndOfLine.AUTO, "\n", "\n"),
+        (EndOfLine.LF, "\r\n", "\n"),
+        (EndOfLine.CRLF, "\n", "\r\n"),
+    ],
+)
+def test_chat_handler_uses_configured_model_and_instructions(
+    tmp_path, monkeypatch, end_of_line, platform_newline, expected_newline
+):
     (tmp_path / "IACLI.md").write_text("Mes instructions", encoding="utf-8")
     settings = OllamaSettings(
         "http://ollama.test:11434",
@@ -76,7 +93,8 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
         "coder:latest",
         num_ctx=8192,
     )
-    state = ConfigurationState(tmp_path, settings)
+    state = ConfigurationState(tmp_path, settings, files=FileSettings(end_of_line))
+    monkeypatch.setattr("iacli.cli.os.linesep", platform_newline)
     model = object()
     chat_calls = []
     model_arguments = {}
@@ -126,7 +144,11 @@ def test_chat_handler_uses_configured_model_and_instructions(tmp_path, monkeypat
     assert args[1] == Path.cwd().resolve()
     assert args[2:] == ("Mes instructions", "coder:latest")
     assert isinstance(kwargs["presenter"], CliChatPresenter)
-    assert kwargs["tools_factory"] is create_workspace_tools
+    # Composition root : les outils reçoivent la fin de ligne par défaut résolue.
+    tools_factory = kwargs["tools_factory"]
+    assert isinstance(tools_factory, partial)
+    assert tools_factory.func is create_workspace_tools
+    assert tools_factory.keywords == {"default_newline": expected_newline}
     assert kwargs["context_limit"] == 8192
     assert model_arguments == {
         "model": "coder:latest",
