@@ -304,3 +304,46 @@ def test_json_text_tool_call_conversion_keeps_usage_and_extra_fields():
     )
     assert converted.usage_metadata == usage
     assert converted.additional_kwargs == {"origine": "texte"}
+
+
+def test_graph_routes_tool_call_tag_through_action_node():
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content=(
+                    '<tool_call>{"name": "read_file", '
+                    '"arguments": {"path": "README.md"}}</tool_call>'
+                )
+            ),
+            AIMessage(content="Fichier lu."),
+        ]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    tool_messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
+    assert [message.content for message in tool_messages] == ["contents of README.md"]
+    assert result["messages"][-1].content == "Fichier lu."
+
+
+def test_graph_reports_unknown_tool_in_tag_to_the_model():
+    model = FakeChatModel(
+        [
+            AIMessage(
+                content='<tool_call>{"name": "inconnu", "arguments": {}}</tool_call>'
+            ),
+            AIMessage(content="Je me corrige."),
+        ]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Fais quelque chose")]})
+
+    tool_message = model.calls[1][-1]
+    assert isinstance(tool_message, ToolMessage)
+    assert "inconnu" in tool_message.content
+    assert tool_message.status == "error"
+    assert result["messages"][-1].content == "Je me corrige."

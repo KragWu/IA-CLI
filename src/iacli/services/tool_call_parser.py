@@ -14,6 +14,36 @@ from langchain_core.messages import AIMessage
 # Bloc de code markdown ```json ... ``` glissé par un petit modèle dans sa prose.
 _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
+# Format Hermes/Qwen : <tool_call>{"name": ..., "arguments": {...}}</tool_call>.
+_TOOL_CALL_TAG = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
+
+
+def _make_tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {"name": name, "args": arguments, "id": str(uuid4()), "type": "tool_call"}
+
+
+def _parse_tagged_tool_calls(text: str) -> list[dict[str, Any]] | None:
+    """Renvoie les tool calls des balises `<tool_call>` de `text`, None s'il n'y en a
+    pas ou si l'une est invalide. Le nom n'est pas confronté aux outils connus :
+    `ToolNode` renverra lui-même une erreur au modèle pour un outil inconnu."""
+    bodies = _TOOL_CALL_TAG.findall(text)
+    if not bodies:
+        return None
+    calls = []
+    for body in bodies:
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        name = payload.get("name")
+        arguments = payload.get("arguments", {})
+        if not isinstance(name, str) or not isinstance(arguments, dict):
+            return None
+        calls.append(_make_tool_call(name, arguments))
+    return calls
+
 
 def parse_tool_calls(
     text: str, tool_names: Collection[str]
@@ -49,14 +79,7 @@ def parse_tool_calls(
             or not isinstance(arguments, dict)
         ):
             return None
-        calls.append(
-            {
-                "name": name,
-                "args": arguments,
-                "id": str(uuid4()),
-                "type": "tool_call",
-            }
-        )
+        calls.append(_make_tool_call(name, arguments))
     return calls
 
 
@@ -68,7 +91,9 @@ def normalize_text_tool_call(response: Any, tool_names: Collection[str]) -> Any:
     if not isinstance(response.content, str):
         return response
     content = response.content
-    calls = parse_tool_calls(content, tool_names)
+    calls = _parse_tagged_tool_calls(content)
+    if calls is None:
+        calls = parse_tool_calls(content, tool_names)
     if calls is None:
         blocks = _JSON_FENCE.findall(content)
         if not blocks:
