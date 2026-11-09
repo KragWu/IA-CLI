@@ -97,6 +97,25 @@ def _format_shell_result(header: str, stdout: str, stderr: str) -> str:
     return header + stdout_part + stderr_part
 
 
+# Signale, dans un diff, une dernière ligne sans retour à la ligne (comme git).
+NO_FINAL_NEWLINE_MARKER = "\\ Pas de retour à la ligne à la fin du fichier\n"
+
+
+def _unified_diff(previous: str, proposed: str, fromfile: str, tofile: str) -> str:
+    """Diff unifié de deux textes en LF ; une dernière ligne sans `\\n` est signalée,
+    sinon retirer ou ajouter ce retour à la ligne final serait invisible dans le diff."""
+    lines = difflib.unified_diff(
+        previous.splitlines(keepends=True),
+        proposed.splitlines(keepends=True),
+        fromfile=fromfile,
+        tofile=tofile,
+    )
+    return "".join(
+        line if line.endswith("\n") else f"{line}\n{NO_FINAL_NEWLINE_MARKER}"
+        for line in lines
+    )
+
+
 def _count_occurrences(text: str, block: str) -> int:
     """Nombre d'occurrences de `block` dans `text`, chevauchements compris (`str.count`
     les ignore : « aa » compte une fois dans « aaa » alors qu'il y est à deux endroits)."""
@@ -336,13 +355,11 @@ def create_workspace_tools(
     ) -> str:
         """Affiche le diff `previous` -> `proposed` (textes en LF), puis écrit après accord."""
         relative_path = file_path.relative_to(root).as_posix()
-        diff = "".join(
-            difflib.unified_diff(
-                previous.splitlines(keepends=True),
-                proposed.splitlines(keepends=True),
-                fromfile=f"a/{relative_path}",
-                tofile=f"b/{relative_path}",
-            )
+        diff = _unified_diff(
+            previous,
+            proposed,
+            fromfile=f"a/{relative_path}",
+            tofile=f"b/{relative_path}",
         )
         if not diff and file_path.exists():
             return "Aucune modification : le fichier contient déjà ce texte."
