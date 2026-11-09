@@ -19,7 +19,8 @@ from iacli.domain.config import (
 )
 from iacli.domain.models import ModelInfo
 from iacli.infrastructure.workspace_tools import create_workspace_tools
-from iacli.services.chat import run_chat
+from iacli.services.chat import _without_incomplete_tail, run_chat
+from iacli.services.tool_call_parser import make_tool_call_feedback
 from tests.fakes import FakeChatModel
 
 
@@ -701,6 +702,24 @@ def test_failed_turn_keeps_tool_work_done_before_malformed_tool_calls(tmp_path):
         for message in next_turn
     )
     assert not any("<tool_call>{oups" in str(message.content) for message in next_turn)
+
+
+def test_incomplete_tail_keeps_feedback_that_does_not_answer_a_broken_reply():
+    history = [
+        HumanMessage(content="demande"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "read_file", "args": {}, "id": "t1", "type": "tool_call"}
+            ],
+        ),
+        ToolMessage(content="résultat", tool_call_id="t1", name="read_file"),
+        make_tool_call_feedback("erreur"),
+    ]
+
+    kept = _without_incomplete_tail(history, turn_start=0)
+
+    assert kept == history
 
 
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
