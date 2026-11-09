@@ -729,6 +729,19 @@ def test_write_file_cancels_cleanly_when_the_path_becomes_unreadable_during_conf
     assert target.is_dir()
 
 
+def test_edit_file_keeps_the_utf8_bom_and_is_not_seen_as_a_concurrent_change(tmp_path):
+    target = tmp_path / "bom.txt"
+    target.write_bytes(b"\xef\xbb\xbfa\nb\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    result = tools["edit_file"].invoke(
+        {"path": "bom.txt", "old_string": "b", "new_string": "c"}
+    )
+
+    assert result == "Fichier modifié : bom.txt"
+    assert target.read_bytes() == b"\xef\xbb\xbfa\nc\n"
+
+
 def test_edit_file_reports_timing(tmp_path):
     (tmp_path / "notes.txt").write_text("a", encoding="utf-8")
     timings = []
