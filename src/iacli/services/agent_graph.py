@@ -101,9 +101,6 @@ def build_control_graph(
                 on_agent_timing(perf_counter() - started)
         response = normalize_text_tool_call(raw_response, tool_names)
         iterations = state.get("tool_iterations", 0)
-        limit_error = MaxToolIterationsError(
-            f"Limite de {max_iterations} exécutions d'outils atteinte."
-        )
 
         if isinstance(response, MalformedToolCall):
             # Le modèle voit son appel raté et l'erreur, puis réessaie (borné par
@@ -132,7 +129,9 @@ def build_control_graph(
             and response.tool_calls
             and iterations >= max_iterations
         ):
-            updates["error"] = limit_error
+            updates["error"] = MaxToolIterationsError(
+                f"Limite de {max_iterations} exécutions d'outils atteinte."
+            )
         return updates
 
     def route_after_agent(state: AgentState) -> str:
