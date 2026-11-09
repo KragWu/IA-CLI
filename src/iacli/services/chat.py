@@ -167,8 +167,7 @@ def _run_turn(
             ):
                 produced_state = True
                 last_messages = state["messages"]
-                for message in last_messages[seen_messages:]:
-                    _present_message(message, chat_presenter)
+                _present_messages(last_messages[seen_messages:], chat_presenter)
                 seen_messages = max(seen_messages, len(last_messages))
         finally:
             chat_presenter.stop_progress()
@@ -251,6 +250,20 @@ def _without_incomplete_tail(
     return kept
 
 
+def _present_messages(
+    messages: list[BaseMessage], chat_presenter: ChatPresenter
+) -> None:
+    """Présente les nouveaux messages du graphe, dans l'ordre.
+
+    Un appel d'outil illisible n'est pas annoncé comme une réponse : seule la
+    correction qui le suit informe l'utilisateur que l'agent réessaie."""
+    for index, message in enumerate(messages):
+        following = messages[index + 1 : index + 2]
+        if following and is_tool_call_feedback(following[0]):
+            continue
+        _present_message(message, chat_presenter)
+
+
 def _present_message(message: BaseMessage, chat_presenter: ChatPresenter) -> None:
     """Traduit un message du graphe en mise à jour de progression et en lignes d'outils."""
     if isinstance(message, AIMessage) and message.tool_calls:
@@ -263,5 +276,7 @@ def _present_message(message: BaseMessage, chat_presenter: ChatPresenter) -> Non
             f"Résultat de {message.name} reçu; l'agent poursuit"
         )
         chat_presenter.show_tool_result(message.name or "")
+    elif is_tool_call_feedback(message):
+        chat_presenter.update_progress("Appel d'outil illisible ; l'agent réessaie")
     elif isinstance(message, AIMessage):
         chat_presenter.update_progress("Préparation de la réponse")
