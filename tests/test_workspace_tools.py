@@ -625,6 +625,72 @@ def test_write_file_checks_the_size_of_the_text_as_written_with_crlf(
     assert confirmations == []
 
 
+def modifying_confirmation(target, new_bytes):
+    """Confirmation qui accepte, mais après avoir modifié `target` (écriture concurrente)."""
+
+    def confirm(_path, _diff):
+        target.write_bytes(new_bytes)
+        return True
+
+    return confirm
+
+
+def test_edit_file_does_not_overwrite_a_file_changed_during_confirmation(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"a\nb\n")
+    tools = create_tools(
+        tmp_path, confirm_write=modifying_confirmation(target, b"a\nb\nconcurrent\n")
+    )
+
+    result = tools["edit_file"].invoke(
+        {"path": "main.py", "old_string": "a\n", "new_string": "z\n"}
+    )
+
+    assert "a changé pendant la confirmation" in result
+    assert target.read_bytes() == b"a\nb\nconcurrent\n"
+
+
+def test_write_file_does_not_overwrite_a_file_changed_during_confirmation(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"a\nb\n")
+    tools = create_tools(
+        tmp_path, confirm_write=modifying_confirmation(target, b"concurrent\n")
+    )
+
+    result = tools["write_file"].invoke({"path": "main.py", "content": "z\n"})
+
+    assert "a changé pendant la confirmation" in result
+    assert target.read_bytes() == b"concurrent\n"
+
+
+def test_write_file_does_not_overwrite_a_file_created_during_confirmation(tmp_path):
+    target = tmp_path / "new.py"
+    tools = create_tools(
+        tmp_path, confirm_write=modifying_confirmation(target, b"concurrent\n")
+    )
+
+    result = tools["write_file"].invoke({"path": "new.py", "content": "z\n"})
+
+    assert "a changé pendant la confirmation" in result
+    assert target.read_bytes() == b"concurrent\n"
+
+
+def test_write_file_refuses_a_file_deleted_during_confirmation(tmp_path):
+    target = tmp_path / "main.py"
+    target.write_bytes(b"a\n")
+
+    def delete_then_accept(_path, _diff):
+        target.unlink()
+        return True
+
+    tools = create_tools(tmp_path, confirm_write=delete_then_accept)
+
+    result = tools["write_file"].invoke({"path": "main.py", "content": "z\n"})
+
+    assert "a changé pendant la confirmation" in result
+    assert not target.exists()
+
+
 def test_edit_file_reports_timing(tmp_path):
     (tmp_path / "notes.txt").write_text("a", encoding="utf-8")
     timings = []
