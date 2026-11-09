@@ -134,9 +134,13 @@ Détails de fonctionnement :
   dans leur réponse (éventuellement plusieurs objets, ou dans un bloc ```` ```json ````) au lieu d'utiliser le mécanisme
   de *tool calling*. IA-CLI reconnaît ce format pour les outils connus et le traite comme un véritable appel d'outil.
   Le format à balises `<tool_call>{"name":"outil","arguments":{...}}</tool_call>` est aussi reconnu ; un outil inconnu
-  y reçoit la réponse d'erreur habituelle. Une balise `<tool_call>` illisible (JSON invalide, balise non refermée,
-  `name` ou `arguments` incorrect) n'est pas affichée comme réponse : l'erreur est renvoyée au modèle pour qu'il
-  corrige son appel (chaque tentative compte dans la limite d'exécutions).
+  y reçoit la réponse d'erreur habituelle, et un `arguments` absent vaut `{}` (outil sans paramètre). Une balise n'est
+  considérée comme un appel que si du JSON la suit : une simple mention de `<tool_call>` dans une phrase reste du texte
+  (limite connue : un exemple de format avec du JSON invalide, comme `<tool_call>{"name": ...}</tool_call>`, est lu
+  comme un appel raté). Un appel illisible (JSON invalide, balise non refermée, `name` absent, `arguments` qui n'est
+  pas un objet) n'est pas affiché comme réponse : l'erreur est renvoyée au modèle pour qu'il corrige son appel. Après
+  3 tentatives illisibles consécutives, le tour s'arrête avec une erreur ; ces tentatives ne comptent pas dans la
+  limite d'exécutions d'outils et l'historique du tour en échec est nettoyé.
 - **Limite d'exécutions** : un tour s'arrête avec une erreur après 25 exécutions d'outils consécutives.
 
 ### Ce qui s'affiche pendant un tour
@@ -343,7 +347,9 @@ START ─► agent ──(appel d'outil)──► action ─┐
 
 L'agent route les demandes d'outils vers leur exécution, puis réinjecte les `ToolMessage` au modèle. La conversion des
 appels écrits dans le texte est faite par `iacli.services.tool_call_parser` (logique pure) ; un appel `<tool_call>`
-illisible ajoute un message d'erreur à l'historique et renvoie la main au modèle (arête `agent` → `agent`). Une réponse sans
+illisible ajoute un message d'erreur (un `HumanMessage` marqué, `make_tool_call_feedback`) à l'historique et renvoie la
+main au modèle (arête `agent` → `agent`), dans la limite de `max_malformed_retries` (3) réessais consécutifs, au-delà
+desquels le graphe lève `MalformedToolCallsError`. Une réponse sans
 outil passe par l'évaluateur (`evaluate_response` dans `chat.py` : refuse une réponse vide ou qui garde des appels
 d'outils en attente) avant la fin du graphe. La limite par défaut est de 25 exécutions d'outils et peut être ajustée avec
 `max_iterations` ; au-delà, l'évaluateur lève `MaxToolIterationsError`.
