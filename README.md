@@ -144,14 +144,16 @@ Détails de fonctionnement :
   l'historique en fin de tour, qu'il réussisse ou échoue. Si la réponse a été coupée par la limite de tokens
   (`done_reason` = `length`) au milieu d'un appel, le modèle est invité à faire un appel plus court (par exemple
   découper un gros `write_file`) ; après 3 coupures consécutives, l'erreur affichée suggère d'augmenter `num_ctx`
-  dans `config.toml` ou de demander une action plus petite. Une réponse finale en prose coupée n'est pas détectée.
+  dans `config.toml` ou de demander une action plus petite. La coupure est aussi détectée juste après la balise
+  ouvrante `<tool_call>`. Une réponse finale en prose coupée n'est pas détectée.
 - **Limite d'exécutions** : un tour s'arrête avec une erreur après 25 exécutions d'outils consécutives.
 
 ### Ce qui s'affiche pendant un tour
 
 - Un indicateur animé avec la durée écoulée (uniquement dans un terminal interactif ; sur `stderr`), le nom des outils
   appelés et la réception de leurs résultats. L'affichage montre l'avancement sans révéler le raisonnement interne
-  détaillé du modèle.
+  détaillé du modèle. Quand un appel d'outil illisible est renvoyé au modèle, l'indicateur affiche
+  `Appel d'outil illisible ; l'agent réessaie`.
 - Après chaque tour, le temps de chaque appel au modèle et de chaque outil, puis le temps total (qui inclut le temps
   passé à confirmer une action). Les durées sont affichées en ms, s, min ou h selon leur valeur.
 - Quand Ollama renvoie le nombre de tokens consommés, l'occupation de la fenêtre de contexte, calculée sur le dernier
