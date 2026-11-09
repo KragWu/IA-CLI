@@ -4,13 +4,13 @@ from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Annotated, Any, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from iacli.services.tool_call_parser import normalize_text_tool_call
+from iacli.services.tool_call_parser import MalformedToolCall, normalize_text_tool_call
 
 
 class AgentState(TypedDict, total=False):
@@ -18,12 +18,14 @@ class AgentState(TypedDict, total=False):
 
     `messages` : historique (les nouveaux messages sont ajoutés, pas remplacés) ;
     `tool_iterations` : exécutions d'outils déjà faites pendant ce tour ;
-    `evaluation` : résultat de l'évaluateur ; `error` : motif d'arrêt anticipé."""
+    `evaluation` : résultat de l'évaluateur ; `error` : motif d'arrêt anticipé ;
+    `retry` : le dernier appel d'outil était illisible, le modèle doit le corriger."""
 
     messages: Annotated[list[AnyMessage], add_messages]
     tool_iterations: int
     evaluation: object
     error: str
+    retry: bool
 
 
 Evaluator = Callable[[AgentState], object]
@@ -70,26 +72,41 @@ def build_control_graph(
     def agent(state: AgentState) -> dict[str, Any]:
         started = perf_counter()
         try:
-            response = normalize_text_tool_call(
-                agent_model.invoke(state["messages"]), tool_names
-            )
+            raw_response = agent_model.invoke(state["messages"])
         finally:
             if on_agent_timing is not None:
                 on_agent_timing(perf_counter() - started)
-        updates: dict[str, Any] = {
+        response = normalize_text_tool_call(raw_response, tool_names)
+        iterations = state.get("tool_iterations", 0)
+        limit_error = f"Limite de {max_iterations} exécutions d'outils atteinte."
+
+        if isinstance(response, MalformedToolCall):
+            # Le modèle voit son appel raté et l'erreur, puis réessaie (borné comme
+            # une exécution d'outil, pour ne pas boucler indéfiniment).
+            updates: dict[str, Any] = {
+                "messages": [raw_response, HumanMessage(content=response.error)],
+                "tool_iterations": iterations + 1,
+                "retry": True,
+            }
+            if iterations >= max_iterations:
+                updates["error"] = limit_error
+            return updates
+
+        updates = {
             "messages": [response],
-            "tool_iterations": state.get("tool_iterations", 0),
+            "tool_iterations": iterations,
+            "retry": False,
         }
-        if response.tool_calls and state.get("tool_iterations", 0) >= max_iterations:
-            updates["error"] = (
-                f"Limite de {max_iterations} exécutions d'outils atteinte."
-            )
+        if response.tool_calls and iterations >= max_iterations:
+            updates["error"] = limit_error
         return updates
 
     def route_after_agent(state: AgentState) -> str:
         """Aiguillage : vers les outils si le modèle en demande (et que la limite n'est pas dépassée), sinon vers l'évaluateur."""
         if state.get("error"):
             return "evaluator"
+        if state.get("retry"):
+            return "agent"
         last_message = state["messages"][-1]
         if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "action"
@@ -115,7 +132,7 @@ def build_control_graph(
     graph.add_conditional_edges(
         "agent",
         route_after_agent,
-        {"action": "action", "evaluator": "evaluator"},
+        {"action": "action", "agent": "agent", "evaluator": "evaluator"},
     )
     graph.add_edge("action", "agent")
     graph.add_edge("evaluator", END)

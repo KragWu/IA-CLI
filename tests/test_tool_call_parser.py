@@ -1,6 +1,10 @@
+import pytest
 from langchain_core.messages import AIMessage
 
-from iacli.services.tool_call_parser import normalize_text_tool_call
+from iacli.services.tool_call_parser import (
+    MalformedToolCall,
+    normalize_text_tool_call,
+)
 
 TOOLS = {"read_file", "list_files"}
 
@@ -91,5 +95,50 @@ def test_native_ollama_tool_call_parsing():
 
 def test_plain_answer_is_left_untouched():
     answer = AIMessage(content="Bonjour, comment puis-je aider ?")
+
+    assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+def test_malformed_tool_call_handling_reports_invalid_json():
+    result = _normalize('<tool_call>{"name": "read_file", </tool_call>')
+
+    assert isinstance(result, MalformedToolCall)
+    assert "JSON" in result.error
+    assert "<tool_call>" in result.error
+
+
+def test_malformed_tool_call_handling_reports_unclosed_tag():
+    result = _normalize('<tool_call>{"name": "read_file", "arguments": {}}')
+
+    assert isinstance(result, MalformedToolCall)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '["read_file"]',
+        '{"arguments": {}}',
+        '{"name": 3, "arguments": {}}',
+        '{"name": "read_file", "arguments": "a.txt"}',
+    ],
+)
+def test_malformed_tool_call_handling_reports_wrong_structure(body):
+    result = _normalize(f"<tool_call>{body}</tool_call>")
+
+    assert isinstance(result, MalformedToolCall)
+    assert '"name"' in result.error
+
+
+def test_malformed_tag_among_valid_ones_is_reported():
+    result = _normalize(
+        '<tool_call>{"name": "list_files", "arguments": {}}</tool_call>'
+        "<tool_call>{oups</tool_call>"
+    )
+
+    assert isinstance(result, MalformedToolCall)
+
+
+def test_invalid_fenced_json_without_tag_stays_plain_text():
+    answer = AIMessage(content='```json\n{"name": "read_file", \n```')
 
     assert normalize_text_tool_call(answer, TOOLS) is answer
