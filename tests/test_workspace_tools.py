@@ -364,6 +364,32 @@ def test_write_file_diff_flags_a_missing_final_newline_before_and_after(tmp_path
     assert diff_lines.index("-deux") + 1 == diff_lines.index(NO_FINAL_NEWLINE_MARKER)
 
 
+# U+2028 : `str.splitlines` y coupe ; construit sans caractère ambigu dans le source.
+LINE_SEPARATOR = chr(0x2028)
+
+
+def test_diff_does_not_split_lines_on_form_feed_unicode_separator_or_lone_cr(tmp_path):
+    (tmp_path / "odd.txt").write_bytes(
+        (f"a\x0cb\nc{LINE_SEPARATOR}d\ne\rf\ng\n").encode()
+    )
+    previews = []
+    tools = create_tools(
+        tmp_path,
+        confirm_write=lambda path, diff: previews.append(diff) or True,
+    )
+
+    tools["edit_file"].invoke(
+        {"path": "odd.txt", "old_string": "g\n", "new_string": "G\n"}
+    )
+
+    diff = previews[0]
+    assert NO_FINAL_NEWLINE_MARKER not in diff
+    assert " a\x0cb\n" in diff
+    assert f" c{LINE_SEPARATOR}d\n" in diff
+    assert " e\rf\n" in diff
+    assert "-g\n+G\n" in diff
+
+
 def test_diff_has_no_marker_when_both_versions_end_with_a_newline(tmp_path):
     (tmp_path / "notes.txt").write_bytes(b"un\n")
     previews = []

@@ -134,12 +134,22 @@ def _parse_text(raw_content: str) -> _TextFile:
 NO_FINAL_NEWLINE_MARKER = "\\ Pas de retour à la ligne à la fin du fichier\n"
 
 
+def _split_lines(text: str) -> list[str]:
+    """Lignes de `text` terminées par `\\n` (la dernière peut ne pas l'être).
+
+    Contrairement à `str.splitlines`, ne coupe que sur `\\n` : un saut de page, U+2028
+    ou un `\\r` isolé restent à l'intérieur de leur ligne."""
+    lines = text.split("\n")
+    last = lines.pop()
+    return [f"{line}\n" for line in lines] + ([last] if last else [])
+
+
 def _unified_diff(previous: str, proposed: str, fromfile: str, tofile: str) -> str:
     """Diff unifié de deux textes en LF ; une dernière ligne sans `\\n` est signalée,
     sinon retirer ou ajouter ce retour à la ligne final serait invisible dans le diff."""
     lines = difflib.unified_diff(
-        previous.splitlines(keepends=True),
-        proposed.splitlines(keepends=True),
+        _split_lines(previous),
+        _split_lines(proposed),
         fromfile=fromfile,
         tofile=tofile,
     )
