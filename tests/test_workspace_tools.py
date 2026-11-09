@@ -467,10 +467,17 @@ def test_edit_file_ambiguity_message_does_not_claim_an_exact_count(tmp_path):
     assert target.read_bytes() == b"x\n" * 5
 
 
-def test_count_occurrences_stops_at_the_limit_even_with_overlaps():
-    assert workspace_tools._count_occurrences("aaaaa", "aa", limit=2) == 2
-    assert workspace_tools._count_occurrences("aaaaa", "aa", limit=10) == 4
-    assert workspace_tools._count_occurrences("abc", "d", limit=2) == 0
+def test_find_block_stops_at_the_limit_even_with_overlaps():
+    assert workspace_tools._find_block("aaaaa", "aa", limit=2) == [(0, 2), (1, 3)]
+    assert len(workspace_tools._find_block("aaaaa", "aa", limit=10)) == 4
+    assert workspace_tools._find_block("abc", "d", limit=2) == []
+
+
+def test_find_block_matches_a_lf_block_against_crlf_text_and_returns_raw_spans():
+    raw = "x\r\ny\nz\r\n"
+
+    assert workspace_tools._find_block(raw, "x\ny\nz\n", limit=2) == [(0, len(raw))]
+    assert workspace_tools._find_block(raw, "y\n", limit=2) == [(3, 5)]
 
 
 def test_edit_file_missing_match_failure(tmp_path):
@@ -561,22 +568,52 @@ def test_edit_file_keeps_lf_line_endings(tmp_path):
     assert target.read_bytes() == b"un\n2\n"
 
 
-def test_edit_file_refuses_a_file_with_mixed_line_endings(tmp_path):
+@pytest.mark.parametrize(
+    ("original", "old_string", "new_string", "expected"),
+    [
+        # Ligne non touchée en LF dans un fichier majoritairement CRLF : intacte.
+        (b"un\r\ndeux\r\ntrois\n", "trois", "3", b"un\r\ndeux\r\n3\n"),
+        # Ligne non touchée en CRLF dans un fichier majoritairement LF : intacte.
+        (b"a\nb\nc\r\n", "a\nb\n", "X\nY\n", b"X\nY\nc\r\n"),
+        # Bloc à cheval sur deux fins de ligne différentes : le bloc prend la majoritaire.
+        (b"a\nb\nc\r\n", "b\nc\n", "B\nC\n", b"a\nB\nC\n"),
+        # Lignes ajoutées dans un fichier majoritairement CRLF : en CRLF.
+        (b"a\r\nb\r\nc\n", "a\nb\n", "1\n2\n3\n", b"1\r\n2\r\n3\r\nc\n"),
+    ],
+)
+def test_edit_file_on_a_mixed_file_only_touches_the_replaced_block(
+    tmp_path, original, old_string, new_string, expected
+):
     target = tmp_path / "mixed.txt"
-    target.write_bytes(b"un\r\ndeux\r\ntrois\n")
-    confirmations = []
+    target.write_bytes(original)
+    diffs = []
     tools = create_tools(
-        tmp_path,
-        confirm_write=lambda path, diff: confirmations.append(path) or True,
+        tmp_path, confirm_write=lambda _path, diff: diffs.append(diff) or True
     )
 
-    with pytest.raises(ValueError, match="fins de ligne mixtes"):
+    result = tools["edit_file"].invoke(
+        {"path": "mixed.txt", "old_string": old_string, "new_string": new_string}
+    )
+
+    assert result == "Fichier modifié : mixed.txt"
+    assert target.read_bytes() == expected
+    # Le reste du fichier n'est pas converti : pas d'avertissement « toutes converties ».
+    assert "mixtes" not in diffs[0]
+
+
+def test_edit_file_still_reports_ambiguity_on_a_crlf_file_with_an_lf_old_string(
+    tmp_path,
+):
+    target = tmp_path / "crlf.txt"
+    target.write_bytes(b"x\r\ny\r\nx\r\n")
+    tools = create_tools(tmp_path, confirm_write=lambda _path, _diff: True)
+
+    with pytest.raises(ValueError, match="au moins 2 fois"):
         tools["edit_file"].invoke(
-            {"path": "mixed.txt", "old_string": "un", "new_string": "1"}
+            {"path": "crlf.txt", "old_string": "x\n", "new_string": "z\n"}
         )
 
-    assert target.read_bytes() == b"un\r\ndeux\r\ntrois\n"
-    assert confirmations == []
+    assert target.read_bytes() == b"x\r\ny\r\nx\r\n"
 
 
 def test_edit_file_rejects_result_too_large(tmp_path):

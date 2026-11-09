@@ -106,10 +106,11 @@ Détails de fonctionnement :
 - **Édition ciblée** : `edit_file(path, old_string, new_string)` remplace `old_string` par `new_string` sans toucher au
   reste du fichier. `old_string` doit correspondre exactement au texte du fichier et n'y apparaître qu'une fois : un
   bloc introuvable, présent plusieurs fois, vide ou identique à `new_string` est une erreur renvoyée au modèle, et le
-  fichier reste intact. Les fins de ligne sont comparées en LF ; celles du fichier (LF ou CRLF) sont conservées.
-  `edit_file` ne crée pas de fichier (utiliser `write_file`) et refuse un fichier aux fins de ligne mixtes (CRLF et LF),
-  pour ne pas modifier les lignes voisines : `write_file` peut alors le réécrire en entier, y compris avec le même
-  texte, ce qui normalise ses fins de ligne (sur la plus fréquente) après confirmation.
+  fichier reste intact. `old_string` s'écrit avec des retours à la ligne `\n` : il est retrouvé que le fichier soit en LF,
+  en CRLF ou mixte. Le reste du fichier est conservé octet pour octet, même s'il mélange LF et CRLF ; seul le bloc
+  remplacé reçoit la fin de ligne la plus fréquente du fichier.
+  `edit_file` ne crée pas de fichier (utiliser `write_file`). Pour normaliser les fins de ligne d'un fichier mixte,
+  `write_file` peut le réécrire en entier, y compris avec le même texte, après confirmation.
 - **Modification concurrente** : si le fichier est créé, modifié ou supprimé pendant que l'utilisateur répond à la
   confirmation, `write_file` et `edit_file` n'écrivent rien et demandent au modèle de relire le fichier.
 - **Diff** : une dernière ligne sans retour à la ligne est signalée par
