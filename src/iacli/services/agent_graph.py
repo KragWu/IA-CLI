@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Annotated, Any, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -72,7 +72,7 @@ def build_control_graph(
     def agent(state: AgentState) -> dict[str, Any]:
         started = perf_counter()
         try:
-            raw_response = agent_model.invoke(state["messages"])
+            raw_response: BaseMessage = agent_model.invoke(state["messages"])
         finally:
             if on_agent_timing is not None:
                 on_agent_timing(perf_counter() - started)
@@ -97,7 +97,11 @@ def build_control_graph(
             "tool_iterations": iterations,
             "retry": False,
         }
-        if response.tool_calls and iterations >= max_iterations:
+        if (
+            isinstance(response, AIMessage)
+            and response.tool_calls
+            and iterations >= max_iterations
+        ):
             updates["error"] = limit_error
         return updates
 
