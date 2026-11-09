@@ -398,6 +398,12 @@ def create_workspace_tools(
 
         raw_content = read_existing_text(file_path, path)
         newline, warning = detect_line_endings(raw_content)
+        if warning:
+            raise ValueError(
+                f"Le fichier {path} contient des fins de ligne mixtes (CRLF et LF) : "
+                "edit_file refuse de le modifier car il changerait aussi les lignes "
+                "voisines. Utilisez write_file pour le réécrire en entier."
+            )
         previous = raw_content.replace("\r\n", "\n")
         old_block = old_string.replace("\r\n", "\n")
         occurrences = previous.count(old_block)
