@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from langchain_core.messages import AIMessage
 
@@ -255,3 +257,70 @@ def test_prose_after_the_tag_is_not_blamed_on_truncation():
     )
 
     assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+LIST_CALL = '<tool_call>{"name": "list_files", "arguments": {}}</tool_call>'
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        f"Voici l'appel : `{LIST_CALL}`",
+        f"Exemple :\n```\n{LIST_CALL}\n```\nFin.",
+        f"Exemple :\n```xml\n{LIST_CALL}\n```",
+        'Le format est `<tool_call>{"name": ...}</tool_call>` avec ton outil.',
+        'Exemple :\n```\n<tool_call>{"name": "x", \n```',
+    ],
+)
+def test_tool_call_quoted_in_markdown_code_is_not_executed(content):
+    answer = AIMessage(content=content)
+
+    assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+def test_tool_call_quoted_in_markdown_code_is_not_reported_as_truncated():
+    answer = AIMessage(
+        content=f"Exemple : `{LIST_CALL}`",
+        response_metadata={"done_reason": "length"},
+    )
+
+    assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+def test_real_call_whose_arguments_contain_markdown_code_is_kept_intact():
+    content = "```py\nprint(1)\n```\net `x`"
+    call = json.dumps(
+        {"name": "read_file", "arguments": {"path": "a.md", "content": content}}
+    )
+
+    result = _normalize(f"<tool_call>{call}</tool_call>")
+
+    assert isinstance(result, AIMessage)
+    assert [item["args"]["content"] for item in result.tool_calls] == [content]
+
+
+def test_real_call_after_a_prose_code_span_is_executed():
+    result = _normalize(f"Je lance `list_files` puis {LIST_CALL}")
+
+    assert [call["name"] for call in result.tool_calls] == ["list_files"]
+
+
+def test_quoted_example_followed_by_a_real_call_gives_only_the_real_call():
+    result = _normalize(
+        f"Le format est `{LIST_CALL}`. Je l'applique :\n"
+        '<tool_call>{"name": "read_file", "arguments": {"path": "a"}}</tool_call>'
+    )
+
+    assert [call["name"] for call in result.tool_calls] == ["read_file"]
+
+
+def test_unclosed_backtick_does_not_hide_a_real_call():
+    result = _normalize(f"Un `backtick isolé\n{LIST_CALL}")
+
+    assert [call["name"] for call in result.tool_calls] == ["list_files"]
+
+
+def test_unclosed_fence_does_not_hide_a_real_call():
+    result = _normalize(f"```\nbloc jamais fermé\n{LIST_CALL}")
+
+    assert [call["name"] for call in result.tool_calls] == ["list_files"]
