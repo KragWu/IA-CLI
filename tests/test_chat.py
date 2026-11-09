@@ -581,6 +581,49 @@ def test_chat_executes_multiple_json_tool_calls_before_final_response(tmp_path):
     )
 
 
+def test_chat_recovers_from_a_malformed_tool_call_tag(tmp_path):
+    (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
+    broken = '<tool_call>{"name": "read_file", </tool_call>'
+
+    class BrokenThenValidModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(content=broken)
+            if len(self.calls) == 2:
+                assert isinstance(messages[-1], HumanMessage)
+                assert "JSON" in messages[-1].content
+                return AIMessage(
+                    content=(
+                        '<tool_call>{"name": "read_file", '
+                        '"arguments": {"path": "README.md"}}</tool_call>'
+                    )
+                )
+            return AIMessage(content="Le README contient : readme contents.")
+
+    model = BrokenThenValidModel()
+    prompts = iter(("Lis le README.md", "/exit"))
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: next(prompts),
+        output_fn=output.append,
+    )
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    assert len(model.calls) == 3
+    assert any("Le README contient : readme contents." in line for line in output)
+    assert not any("<tool_call>" in line for line in output)
+    assert not any(line.startswith("erreur>") for line in output)
+
+
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
     (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("notes contents", encoding="utf-8")
