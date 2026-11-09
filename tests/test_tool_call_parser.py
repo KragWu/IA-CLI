@@ -142,3 +142,39 @@ def test_invalid_fenced_json_without_tag_stays_plain_text():
     answer = AIMessage(content='```json\n{"name": "read_file", \n```')
 
     assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "La balise <tool_call> sert à appeler un outil.",
+        "Écris <tool_call> puis le JSON puis </tool_call> pour appeler un outil.",
+        "Utilise `<tool_call>` et `</tool_call>` comme délimiteurs.",
+    ],
+)
+def test_prose_mentioning_the_tag_is_not_a_malformed_call(prose):
+    answer = AIMessage(content=prose)
+
+    assert normalize_text_tool_call(answer, TOOLS) is answer
+
+
+def test_tool_call_arguments_may_contain_the_closing_tag():
+    result = _normalize(
+        '<tool_call>{"name": "read_file", '
+        '"arguments": {"path": "</tool_call> <tool_call>"}}</tool_call>'
+    )
+
+    assert isinstance(result, AIMessage)
+    assert [call["args"] for call in result.tool_calls] == [
+        {"path": "</tool_call> <tool_call>"}
+    ]
+
+
+def test_prose_mention_before_a_real_call_does_not_hide_the_call():
+    result = _normalize(
+        "Je n'utilise pas <tool_call> en prose.\n"
+        '<tool_call>{"name": "list_files", "arguments": {}}</tool_call>'
+    )
+
+    assert isinstance(result, AIMessage)
+    assert [call["name"] for call in result.tool_calls] == ["list_files"]
