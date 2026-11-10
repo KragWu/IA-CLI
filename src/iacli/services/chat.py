@@ -13,6 +13,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+from iacli.domain.commands import COMMANDS, find_command, looks_like_command
 from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
 from iacli.services.tool_call_parser import is_tool_call_feedback
@@ -102,15 +103,38 @@ def run_chat(
             )
         )
     ]
+    initial_messages = list(messages)
+    last_context_tokens: int | None = None
 
     while True:
         try:
             user_input = chat_presenter.prompt().strip()
         except (EOFError, KeyboardInterrupt):
             return
-        if user_input.casefold() in {"/exit", "/quit"}:
-            return
         if not user_input:
+            continue
+        if looks_like_command(user_input):
+            command = find_command(user_input)
+            if command is None:
+                chat_presenter.show_error(
+                    f"Commande inconnue : {user_input.split()[0]}. "
+                    "Tapez /help pour la liste des commandes."
+                )
+            elif command.name in {"/exit", "/quit"}:
+                return
+            elif command.name == "/help":
+                chat_presenter.show_help(COMMANDS)
+            elif command.name == "/clear":
+                messages = list(initial_messages)
+                last_context_tokens = None
+                chat_presenter.show_notice("Historique effacé")
+            elif command.name == "/context":
+                if context_limit is None or last_context_tokens is None:
+                    chat_presenter.show_notice("contexte> aucune mesure pour l'instant")
+                else:
+                    chat_presenter.show_context_usage(
+                        last_context_tokens, context_limit
+                    )
             continue
         chat_presenter.start_progress()
         request_started = perf_counter()
@@ -118,6 +142,8 @@ def run_chat(
             graph, messages, user_input, chat_presenter, request_started
         )
         messages = outcome.messages
+        if outcome.context_tokens is not None:
+            last_context_tokens = outcome.context_tokens
         if outcome.cancelled:
             chat_presenter.show_cancelled()
         elif outcome.error is not None:
