@@ -139,8 +139,8 @@ Détails de fonctionnement :
   Une balise citée dans du code markdown (bloc ```` ``` ```` ou extrait entre backticks) est un exemple, pas un appel :
   elle n'est ni exécutée ni signalée comme illisible (un modèle qui entourerait son vrai appel d'un bloc de code ne
   serait donc pas reconnu). Un appel illisible (JSON invalide, balise non refermée, `name` absent, `arguments` qui n'est
-  pas un objet) n'est pas affiché comme réponse : l'erreur est renvoyée au modèle pour qu'il corrige son appel. Après
-  3 tentatives illisibles consécutives, le tour s'arrête avec une erreur ; ces tentatives ne comptent pas dans la
+  pas un objet) n'est pas affiché comme réponse : l'erreur est renvoyée au modèle pour qu'il corrige son appel. Le modèle
+  dispose de 3 réessais : au 4e appel illisible consécutif, le tour s'arrête avec une erreur ; ces tentatives ne comptent pas dans la
   limite d'exécutions d'outils. Les appels illisibles et les corrections demandées au modèle sont retirés de
   l'historique en fin de tour, qu'il réussisse ou échoue. Si la réponse a été coupée par la limite de tokens
   (`done_reason` = `length`) au milieu d'un appel, le modèle est invité à faire un appel plus court (par exemple
