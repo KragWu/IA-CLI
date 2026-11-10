@@ -46,7 +46,9 @@ Les dépendances Python sont installées automatiquement :
 - [`langchain-core`](https://github.com/langchain-ai/langchain) fournit les messages et la définition des outils ;
 - [`langchain-ollama`](https://github.com/langchain-ai/langchain) fournit `ChatOllama`, le client de chat qui
   parle à l'instance Ollama ;
-- [`rich`](https://github.com/Textualize/rich) rend les réponses markdown (titres, listes, code coloré) dans un terminal.
+- [`rich`](https://github.com/Textualize/rich) rend les réponses markdown (titres, listes, code coloré) dans un terminal ;
+- [`prompt-toolkit`](https://github.com/prompt-toolkit/python-prompt-toolkit) fournit la saisie interactive (multiligne,
+  complétion, historique).
 
 L'installation n'est pas faite en mode éditable : après une modification du code, relancez `python -m pip install .`.
 
@@ -70,6 +72,19 @@ IA-CLI — modèle qwen2.5-coder:7b — projet /chemin/vers/mon-projet
 Entrez /help pour les commandes, /exit ou /quit pour terminer.
 vous> Explique le fichier main.py
 ```
+
+### Saisie
+
+Dans un terminal interactif, l'invite `vous>` offre :
+
+- **Entrée** envoie le message ; une `\` en fin de ligne, **Ctrl+J** ou **Alt+Entrée** passent à la ligne suivante (un
+  texte collé garde ses retours à la ligne) ;
+- **Tab** complète les slash-commands (`/` puis Tab liste toutes les commandes) ;
+- la **coloration** du premier mot : cyan pour une commande connue, rouge pour une commande inconnue ;
+- l'**historique** (flèches haut et bas), conservé dans `history` à côté de `config.toml` ;
+- une **barre d'état** avec le modèle et l'occupation du contexte (vert, orange puis rouge à partir de 60 % et 80 %).
+
+Redirigée (tube, fichier), la saisie se limite à une ligne lue sur l'entrée standard et l'affichage reste en texte brut.
 
 ### Quitter
 

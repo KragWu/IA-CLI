@@ -12,6 +12,7 @@ dependencies = [
     "langchain-core>=1.6,<2",
     "langchain-ollama>=1.1,<2",
     "langgraph>=1.2,<2",
+    "prompt-toolkit>=3,<4",
     "rich>=13,<16",
 ]
 

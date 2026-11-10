@@ -174,3 +174,8 @@ def test_composition_root_is_the_only_module_importing_both_outer_layers():
     assert any(is_inside(name, "iacli.adapters") for name in wiring)
     assert any(is_inside(name, "iacli.infrastructure") for name in wiring)
     assert any(is_inside(name, "iacli.services") for name in wiring)
+
+
+@pytest.mark.parametrize("layer", ["domain", "services", "infrastructure"])
+def test_terminal_libraries_are_confined_to_the_adapters(layer):
+    assert violations(layer, ("rich", "prompt_toolkit")) == []
