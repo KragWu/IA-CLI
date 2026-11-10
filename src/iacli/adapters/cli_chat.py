@@ -3,12 +3,22 @@
 import json
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Lock, RLock, Thread
 from time import perf_counter
 from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
+
+
+@dataclass(frozen=True)
+class PromptStatus:
+    """Ce que la barre d'état de la saisie affiche : modèle et occupation du contexte."""
+
+    model: str
+    context_used: int | None
+    context_limit: int | None
 
 
 class CliChatPresenter:
@@ -27,7 +37,11 @@ class CliChatPresenter:
         progress_stream: TextIO = sys.stderr,
         render_markdown: Callable[[str], str] | None = None,
         render_diff: Callable[[str], str] | None = None,
+        prompt_fn: Callable[[str], str] | None = None,
     ) -> None:
+        self._prompt_fn = prompt_fn or input_fn
+        self._model = ""
+        self._context: tuple[int, int] | None = None
         self._render_diff = render_diff
         self._render_markdown = render_markdown
         self._input = input_fn
@@ -52,11 +66,16 @@ class CliChatPresenter:
             self._output(line)
 
     def start(self, workspace: Path, model: str) -> None:
+        self._model = model
         self._emit(f"IA-CLI — modèle {model} — projet {workspace}")
         self._emit("Entrez /help pour les commandes, /exit ou /quit pour terminer.")
 
     def prompt(self) -> str:
-        return self._input("vous> ")
+        return self._prompt_fn("vous> ")
+
+    def prompt_status(self) -> PromptStatus:
+        used, limit = self._context or (None, None)
+        return PromptStatus(self._model, used, limit)
 
     def show_response(self, response: str) -> None:
         if self._render_markdown is not None:
@@ -91,6 +110,7 @@ class CliChatPresenter:
         self._emit(f"temps total> demande : {self._format_duration(seconds)}")
 
     def show_context_usage(self, used: int, limit: int) -> None:
+        self._context = (used, limit)
         self._emit(
             f"contexte> {self._format_tokens(used)} / {self._format_tokens(limit)} "
             f"tokens ({round(100 * used / limit)} %)"

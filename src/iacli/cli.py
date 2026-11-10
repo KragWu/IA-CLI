@@ -6,9 +6,11 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from iacli.adapters.cli_chat import CliChatPresenter
+from iacli.adapters.cli_chat import CliChatPresenter, PromptStatus
 from iacli.adapters.cli_presenter import CliPresenter
+from iacli.adapters.terminal_input import create_prompt_input
 from iacli.adapters.terminal_render import render_diff, render_markdown
+from iacli.domain.commands import COMMANDS
 from iacli.domain.config import OllamaSettings, resolve_newline
 from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
@@ -100,10 +102,7 @@ def handle_chat(args: argparse.Namespace) -> None:
         Path.cwd().resolve(),
         instructions,
         model_name,
-        presenter=CliChatPresenter(
-            render_markdown=render_markdown if sys.stdout.isatty() else None,
-            render_diff=render_diff if sys.stdout.isatty() else None,
-        ),
+        presenter=create_chat_presenter(configuration.directory / "history"),
         # Fin de ligne des nouveaux fichiers : réglage `[files] end_of_line`, sinon l'OS.
         tools_factory=partial(
             create_workspace_tools,
@@ -113,6 +112,29 @@ def handle_chat(args: argparse.Namespace) -> None:
         ),
         context_limit=num_ctx,
     )
+
+
+def create_chat_presenter(history_path: Path) -> CliChatPresenter:
+    """Presenter du chat : rendu riche et saisie avancée seulement dans un terminal interactif.
+
+    Redirigé (tube, fichier, tests), il garde `input` et un affichage en texte brut."""
+    interactive_output = sys.stdout.isatty()
+    presenter: CliChatPresenter
+
+    def status() -> PromptStatus:
+        return presenter.prompt_status()
+
+    prompt_fn = (
+        create_prompt_input(COMMANDS, history_path, status)
+        if interactive_output and sys.stdin.isatty()
+        else None
+    )
+    presenter = CliChatPresenter(
+        prompt_fn=prompt_fn,
+        render_markdown=render_markdown if interactive_output else None,
+        render_diff=render_diff if interactive_output else None,
+    )
+    return presenter
 
 
 def build_parser() -> argparse.ArgumentParser:
