@@ -14,7 +14,8 @@ class CliChatPresenter:
 
     Les lignes de résultat vont sur la sortie `output_fn` (stdout) ; l'indicateur
     animé s'écrit sur `progress_stream` (stderr) et seulement si c'est un terminal
-    interactif. `input_fn` et `output_fn` sont injectables pour les tests.
+    interactif. `input_fn`, `output_fn` et `render_markdown` (rendu des réponses, brut
+    si absent) sont injectables pour les tests.
     """
 
     def __init__(
@@ -22,7 +23,9 @@ class CliChatPresenter:
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
         progress_stream: TextIO = sys.stderr,
+        render_markdown: Callable[[str], str] | None = None,
     ) -> None:
+        self._render_markdown = render_markdown
         self._input = input_fn
         self._output = output_fn
         self._progress_stream = progress_stream
@@ -52,6 +55,8 @@ class CliChatPresenter:
         return self._input("vous> ")
 
     def show_response(self, response: str) -> None:
+        if self._render_markdown is not None:
+            response = self._render_markdown(response)
         self._emit(f"\niacli> {response}\n")
 
     def show_error(self, message: str) -> None:
