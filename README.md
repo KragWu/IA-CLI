@@ -359,8 +359,13 @@ cli.py (composition) ─► adapters ───────┐
 1. `handle_chat` charge la configuration, vérifie que le modèle est installé et gère les outils, plafonne `num_ctx`
    au contexte maximal du modèle et lit `IACLI.md`.
 2. Il crée un `ChatOllama` (température 0) et appelle `run_chat`.
-3. `run_chat` construit l'invite système (description des outils + instructions globales), instancie les outils et le
-   graphe, puis boucle sur l'invite `vous>` ; chaque demande est un « tour » exécuté par le graphe.
+3. `run_chat` crée une `ChatSession` puis boucle sur l'invite `vous>`. La session construit l'invite système
+   (description des outils + instructions globales), instancie les outils et le graphe, et garde l'historique ;
+   chaque demande est un « tour » exécuté par le graphe.
+
+La session ne lit jamais la saisie : on lui transmet chaque message avec `handle(saisie)` (qui renvoie `False` sur
+`/exit` ou `/quit`) et on peut l'interrompre depuis un autre thread avec `cancel()`, à la prochaine étape du graphe. La
+boucle console n'est donc qu'un pilote parmi d'autres possibles (par exemple une interface pilotée par événements).
 
 ### Graphe agent/outils
 
@@ -384,5 +389,5 @@ outil passe par l'évaluateur (`evaluate_response` dans `chat.py` : refuse une r
 d'outils en attente) avant la fin du graphe. La limite par défaut est de 25 exécutions d'outils et peut être ajustée avec
 `max_iterations` ; au-delà, l'évaluateur lève `MaxToolIterationsError`.
 
-Quand un tour échoue (erreur, `Ctrl+C`), `run_chat` retire de l'historique la fin incomplète du tour (appel d'outil sans
+Quand un tour échoue (erreur, `Ctrl+C`), la session retire de l'historique la fin incomplète du tour (appel d'outil sans
 résultat, réponse vide) pour que la conversation reste valide et puisse continuer.
