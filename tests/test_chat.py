@@ -831,6 +831,44 @@ def test_chat_shows_progress_when_a_malformed_tool_call_is_retried(tmp_path):
     ]
 
 
+def test_chat_does_not_announce_a_retry_when_the_retry_budget_is_exhausted(tmp_path):
+    class AlwaysBroken(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            return AIMessage(content="<tool_call>{oups</tool_call>")
+
+    class RecordingPresenter(CliChatPresenter):
+        def __init__(self):
+            super().__init__(
+                input_fn=lambda _prompt: "",
+                output_fn=lambda _line: None,
+            )
+            self.progress_updates = []
+
+        def prompt(self):
+            return next(self.prompts)
+
+        def start(self, workspace, model):
+            self.prompts = iter(("Fais quelque chose", "/exit"))
+
+        def update_progress(self, message):
+            self.progress_updates.append(message)
+
+    presenter = RecordingPresenter()
+
+    run_chat(
+        AlwaysBroken(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+    )
+
+    retries = [update for update in presenter.progress_updates if "réessaie" in update]
+    assert len(retries) == 3  # 4 tentatives = 3 réessais ; la dernière n'en annonce pas
+
+
 def test_chat_reports_every_tool_result_when_several_tools_run_in_one_step(tmp_path):
     (tmp_path / "README.md").write_text("readme contents", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("notes contents", encoding="utf-8")
