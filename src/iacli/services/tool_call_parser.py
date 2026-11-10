@@ -70,6 +70,14 @@ _TRUNCATED_REASON = (
 )
 
 
+def truncated_series_message(streak: int) -> str:
+    return (
+        f"Les réponses du modèle ont été coupées par la limite de tokens {streak} fois "
+        "de suite pendant un appel d'outil. Augmentez `num_ctx` dans config.toml ou "
+        "demandez une action plus petite."
+    )
+
+
 def _error_message(reason: str) -> str:
     return (
         f"Ton appel d'outil <tool_call> est invalide : {reason} {_TAG_EXPECTED_FORMAT}"

@@ -14,6 +14,7 @@ from iacli.services.tool_call_parser import (
     MalformedToolCall,
     make_tool_call_feedback,
     normalize_text_tool_call,
+    truncated_series_message,
 )
 
 
@@ -56,14 +57,6 @@ class MaxToolIterationsError(RuntimeError):
 
 class MalformedToolCallsError(RuntimeError):
     """Levée quand le modèle n'arrive pas à corriger ses appels d'outil illisibles."""
-
-
-def _truncated_message(streak: int) -> str:
-    return (
-        f"Les réponses du modèle ont été coupées par la limite de tokens {streak} fois "
-        "de suite pendant un appel d'outil. Augmentez `num_ctx` dans config.toml ou "
-        "demandez une action plus petite."
-    )
 
 
 def build_control_graph(
@@ -120,7 +113,7 @@ def build_control_graph(
             }
             if streak > max_malformed_retries:
                 updates["error"] = MalformedToolCallsError(
-                    _truncated_message(streak)
+                    truncated_series_message(streak)
                     if all_truncated
                     else f"Le modèle a produit {streak} appels d'outil illisibles de suite."
                 )
