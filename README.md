@@ -45,7 +45,8 @@ Les dépendances Python sont installées automatiquement :
 - [`langgraph`](https://github.com/langchain-ai/langgraph) construit le graphe agent/outils ;
 - [`langchain-core`](https://github.com/langchain-ai/langchain) fournit les messages et la définition des outils ;
 - [`langchain-ollama`](https://github.com/langchain-ai/langchain) fournit `ChatOllama`, le client de chat qui
-  parle à l'instance Ollama.
+  parle à l'instance Ollama ;
+- [`rich`](https://github.com/Textualize/rich) rend les réponses markdown (titres, listes, code coloré) dans un terminal.
 
 L'installation n'est pas faite en mode éditable : après une modification du code, relancez `python -m pip install .`.
 
@@ -152,6 +153,8 @@ Détails de fonctionnement :
 
 ### Ce qui s'affiche pendant un tour
 
+- La réponse finale est rendue en markdown (gras, titres, listes, blocs de code colorés) quand la sortie est un
+  terminal interactif ; redirigée vers un fichier ou un tube, elle reste en texte brut.
 - Un indicateur animé avec la durée écoulée (uniquement dans un terminal interactif ; sur `stderr`), le nom des outils
   appelés et la réception de leurs résultats. L'affichage montre l'avancement sans révéler le raisonnement interne
   détaillé du modèle. Quand un appel d'outil illisible est renvoyé au modèle, l'indicateur affiche
