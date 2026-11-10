@@ -2,11 +2,13 @@
 
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import Event, Lock, RLock, Thread
 from time import perf_counter
 from typing import TextIO
+
+from iacli.domain.commands import SlashCommand
 
 
 class CliChatPresenter:
@@ -51,7 +53,7 @@ class CliChatPresenter:
 
     def start(self, workspace: Path, model: str) -> None:
         self._emit(f"IA-CLI — modèle {model} — projet {workspace}")
-        self._emit("Entrez /exit ou /quit pour terminer.")
+        self._emit("Entrez /help pour les commandes, /exit ou /quit pour terminer.")
 
     def prompt(self) -> str:
         return self._input("vous> ")
@@ -63,6 +65,14 @@ class CliChatPresenter:
 
     def show_error(self, message: str) -> None:
         self._emit(f"erreur> {message}")
+
+    def show_notice(self, message: str) -> None:
+        self._emit(message)
+
+    def show_help(self, commands: Sequence[SlashCommand]) -> None:
+        self._emit("Commandes disponibles :")
+        for command in commands:
+            self._emit(f"  {command.name:<10} {command.description}")
 
     def show_cancelled(self) -> None:
         self._emit("Génération annulée")

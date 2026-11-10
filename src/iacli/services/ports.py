@@ -9,6 +9,7 @@ from typing import Protocol
 
 from langchain_core.tools import BaseTool
 
+from iacli.domain.commands import SlashCommand
 from iacli.domain.config import ConfigurationState, OllamaSettings
 from iacli.domain.events import DownloadProgress, InitializationEvent
 from iacli.domain.models import ModelInfo
@@ -88,6 +89,12 @@ class ChatPresenter(Protocol):
     def show_response(self, response: str) -> None: ...
 
     def show_error(self, message: str) -> None: ...
+
+    def show_notice(self, message: str) -> None:
+        """Affiche une information neutre (retour d'une slash-command)."""
+        ...
+
+    def show_help(self, commands: Sequence[SlashCommand]) -> None: ...
 
     def show_cancelled(self) -> None:
         """Annonce que l'utilisateur a interrompu (Ctrl+C) la génération en cours."""

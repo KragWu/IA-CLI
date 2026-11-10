@@ -67,13 +67,16 @@ le périmètre de travail de l'agent.
 
 ```text
 IA-CLI — modèle qwen2.5-coder:7b — projet /chemin/vers/mon-projet
-Entrez /exit ou /quit pour terminer.
+Entrez /help pour les commandes, /exit ou /quit pour terminer.
 vous> Explique le fichier main.py
 ```
 
 ### Quitter
 
 - `/exit` ou `/quit` (insensible à la casse) ferme la conversation.
+- `/help` liste les commandes ; `/clear` efface l'historique (les instructions sont conservées) ; `/context` rappelle
+  l'occupation du contexte au dernier tour. Un mot de la forme `/nom` inconnu est signalé comme une erreur et n'est pas
+  envoyé au modèle (un chemin comme `/etc/hosts` reste un message normal).
 - `Ctrl+D` (fin de fichier) ou `Ctrl+C` **à l'invite `vous>`** ferme aussi la conversation.
 - `Ctrl+C` **pendant le traitement d'une demande** annule seulement ce tour (et arrête la commande shell en cours) :
   `Génération annulée` s'affiche (ce n'est pas une erreur) et la conversation reste ouverte.
