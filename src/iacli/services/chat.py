@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from time import perf_counter
 from typing import Any
 
@@ -39,6 +40,156 @@ def evaluate_response(state: AgentState) -> bool:
     return True
 
 
+class ChatSession:
+    """Une conversation : l'historique, le graphe agent et la gestion des commandes.
+
+    La session ne lit jamais la saisie : c'est à l'appelant (boucle de `run_chat`, ou une
+    interface pilotée par événements) de lui transmettre chaque message avec `handle`.
+    `cancel` peut être appelé depuis un autre thread pour interrompre le tour en cours.
+
+    `model` doit supporter `bind_tools` (ex. `ChatOllama`). `workspace` est le projet
+    courant, `instructions` le contenu d'`IACLI.md` ajouté à l'invite système et
+    `context_limit` la fenêtre de contexte en tokens (None : pas d'affichage).
+    """
+
+    def __init__(
+        self,
+        model: object,
+        workspace: Path,
+        instructions: str,
+        model_name: str,
+        *,
+        presenter: ChatPresenter,
+        tools_factory: ToolsFactory,
+        context_limit: int | None = None,
+    ) -> None:
+        self._presenter = presenter
+        self._workspace = workspace
+        self._model_name = model_name
+        self._context_limit = context_limit
+        tools = tools_factory(
+            workspace,
+            presenter.confirm_file_write,
+            presenter.confirm_shell_command,
+            presenter.show_action_timing,
+        )
+        self._graph = build_control_graph(
+            model,
+            tools,
+            evaluate_response,
+            max_iterations=MAX_TOOL_ITERATIONS,
+            on_agent_timing=lambda elapsed: presenter.show_action_timing(
+                "modèle", elapsed
+            ),
+        )
+        # Historique conservé en mémoire pour toute la session (jamais écrit sur disque).
+        self._initial_messages: list[BaseMessage] = [
+            SystemMessage(
+                content=(
+                    "Tu es un assistant de programmation local. Réponds en français par défaut. "
+                    "Le répertoire de travail est le projet courant. Tu disposes des outils "
+                    "suivants :\n"
+                    "- read_file : lire un fichier du projet ;\n"
+                    "- list_files : lister les fichiers d'un dossier ;\n"
+                    "- search_files : rechercher du texte dans le projet ;\n"
+                    "- write_file : créer un fichier ou remplacer tout son contenu ;\n"
+                    "- edit_file : remplacer un bloc de texte exact (old_string, qui doit "
+                    "apparaître une seule fois) par new_string dans un fichier existant ;\n"
+                    "- run_shell : exécuter une commande shell.\n"
+                    "write_file, edit_file et run_shell demandent une confirmation "
+                    "explicite de l'utilisateur, qui voit le diff ou la commande avant de "
+                    "valider. Pour créer un fichier, appelle write_file ; pour modifier un "
+                    "fichier existant, préfère edit_file (lis le fichier d'abord pour "
+                    "copier old_string exactement) et garde write_file pour le réécrire "
+                    "en entier. Quand l'utilisateur demande de créer ou de modifier un "
+                    "fichier, utilise ces outils : ne colle pas de code dans le chat à la "
+                    "place, et ne dis jamais que tu ne peux pas créer de fichiers ni "
+                    "exécuter de commandes. "
+                    "Quand tu dois utiliser un outil, appelle-le via l'interface d'outils; "
+                    "ne renvoie pas un appel d'outil sous forme de JSON dans ta réponse.\n\n"
+                    f"Instructions globales :\n{instructions}"
+                )
+            )
+        ]
+        self._messages = list(self._initial_messages)
+        self._last_context_tokens: int | None = None
+        self._cancel_requested = Event()
+
+    def start(self) -> None:
+        """Affiche l'en-tête de la conversation."""
+        self._presenter.start(self._workspace, self._model_name)
+
+    def cancel(self) -> None:
+        """Demande l'arrêt du tour en cours, à la prochaine étape du graphe.
+
+        Utilisable depuis n'importe quel thread ; sans effet si aucun tour n'est en cours.
+        Un appel déjà lancé (modèle, commande shell) n'est pas interrompu de force."""
+        self._cancel_requested.set()
+
+    def handle(self, user_input: str) -> bool:
+        """Traite une saisie (message ou slash-command) ; False quand la session doit se terminer."""
+        user_input = user_input.strip()
+        if not user_input:
+            return True
+        if looks_like_command(user_input):
+            return self._handle_command(user_input)
+        self._run_turn(user_input)
+        return True
+
+    def _handle_command(self, user_input: str) -> bool:
+        presenter = self._presenter
+        command = find_command(user_input)
+        if command is None:
+            presenter.show_error(
+                f"Commande inconnue : {user_input.split()[0]}. "
+                "Tapez /help pour la liste des commandes."
+            )
+        elif command.name in {"/exit", "/quit"}:
+            return False
+        elif command.name == "/help":
+            presenter.show_help(COMMANDS)
+        elif command.name == "/clear":
+            self._messages = list(self._initial_messages)
+            self._last_context_tokens = None
+            presenter.show_notice("Historique effacé")
+        elif command.name == "/context":
+            if self._context_limit is None or self._last_context_tokens is None:
+                presenter.show_notice("contexte> aucune mesure pour l'instant")
+            else:
+                presenter.show_context_usage(
+                    self._last_context_tokens, self._context_limit
+                )
+        return True
+
+    def _run_turn(self, user_input: str) -> None:
+        presenter = self._presenter
+        # Une annulation demandée hors tour ne doit pas couper le tour suivant.
+        self._cancel_requested.clear()
+        presenter.start_progress()
+        outcome = _run_turn(
+            self._graph,
+            self._messages,
+            user_input,
+            presenter,
+            perf_counter(),
+            self._cancel_requested,
+        )
+        self._messages = outcome.messages
+        if outcome.context_tokens is not None:
+            self._last_context_tokens = outcome.context_tokens
+        if outcome.cancelled:
+            presenter.show_cancelled()
+        elif outcome.error is not None:
+            presenter.show_error(str(outcome.error) or type(outcome.error).__name__)
+        else:
+            presenter.show_response(outcome.response)
+        limit = self._context_limit
+        if limit is not None and outcome.context_tokens is not None:
+            presenter.show_context_usage(outcome.context_tokens, limit)
+            if outcome.context_tokens >= limit * CONTEXT_WARNING_RATIO:
+                presenter.show_context_warning(outcome.context_tokens, limit)
+
+
 def run_chat(
     model: object,
     workspace: Path,
@@ -49,115 +200,32 @@ def run_chat(
     tools_factory: ToolsFactory,
     context_limit: int | None = None,
 ) -> None:
-    """Boucle de conversation : un tour du graphe par saisie utilisateur.
+    """Boucle de conversation console : une saisie lue sur le presenter, un tour par message.
 
-    `model` doit supporter `bind_tools` (ex. `ChatOllama`). `workspace` est le projet
-    courant, `instructions` le contenu d'`IACLI.md` ajouté à l'invite système et
-    `context_limit` la fenêtre de contexte en tokens (None : pas d'affichage).
     La boucle s'arrête sur `/exit`, `/quit`, une fin de fichier ou Ctrl+C à l'invite ;
     une erreur pendant un tour est affichée sans fermer la session.
     """
-    chat_presenter = presenter
-    tools = tools_factory(
-        workspace,
-        chat_presenter.confirm_file_write,
-        chat_presenter.confirm_shell_command,
-        chat_presenter.show_action_timing,
-    )
-    graph = build_control_graph(
+    session = ChatSession(
         model,
-        tools,
-        evaluate_response,
-        max_iterations=MAX_TOOL_ITERATIONS,
-        on_agent_timing=lambda elapsed: chat_presenter.show_action_timing(
-            "modèle", elapsed
-        ),
+        workspace,
+        instructions,
+        model_name,
+        presenter=presenter,
+        tools_factory=tools_factory,
+        context_limit=context_limit,
     )
-    chat_presenter.start(workspace, model_name)
-    # Historique conservé en mémoire pour toute la session (jamais écrit sur disque).
-    messages: list[BaseMessage] = [
-        SystemMessage(
-            content=(
-                "Tu es un assistant de programmation local. Réponds en français par défaut. "
-                "Le répertoire de travail est le projet courant. Tu disposes des outils "
-                "suivants :\n"
-                "- read_file : lire un fichier du projet ;\n"
-                "- list_files : lister les fichiers d'un dossier ;\n"
-                "- search_files : rechercher du texte dans le projet ;\n"
-                "- write_file : créer un fichier ou remplacer tout son contenu ;\n"
-                "- edit_file : remplacer un bloc de texte exact (old_string, qui doit "
-                "apparaître une seule fois) par new_string dans un fichier existant ;\n"
-                "- run_shell : exécuter une commande shell.\n"
-                "write_file, edit_file et run_shell demandent une confirmation "
-                "explicite de l'utilisateur, qui voit le diff ou la commande avant de "
-                "valider. Pour créer un fichier, appelle write_file ; pour modifier un "
-                "fichier existant, préfère edit_file (lis le fichier d'abord pour "
-                "copier old_string exactement) et garde write_file pour le réécrire "
-                "en entier. Quand l'utilisateur demande de créer ou de modifier un "
-                "fichier, utilise ces outils : ne colle pas de code dans le chat à la "
-                "place, et ne dis jamais que tu ne peux pas créer de fichiers ni "
-                "exécuter de commandes. "
-                "Quand tu dois utiliser un outil, appelle-le via l'interface d'outils; "
-                "ne renvoie pas un appel d'outil sous forme de JSON dans ta réponse.\n\n"
-                f"Instructions globales :\n{instructions}"
-            )
-        )
-    ]
-    initial_messages = list(messages)
-    last_context_tokens: int | None = None
-
+    session.start()
     while True:
         try:
-            user_input = chat_presenter.prompt().strip()
+            user_input = presenter.prompt()
         except (EOFError, KeyboardInterrupt):
             return
-        if not user_input:
-            continue
-        if looks_like_command(user_input):
-            command = find_command(user_input)
-            if command is None:
-                chat_presenter.show_error(
-                    f"Commande inconnue : {user_input.split()[0]}. "
-                    "Tapez /help pour la liste des commandes."
-                )
-            elif command.name in {"/exit", "/quit"}:
-                return
-            elif command.name == "/help":
-                chat_presenter.show_help(COMMANDS)
-            elif command.name == "/clear":
-                messages = list(initial_messages)
-                last_context_tokens = None
-                chat_presenter.show_notice("Historique effacé")
-            elif command.name == "/context":
-                if context_limit is None or last_context_tokens is None:
-                    chat_presenter.show_notice("contexte> aucune mesure pour l'instant")
-                else:
-                    chat_presenter.show_context_usage(
-                        last_context_tokens, context_limit
-                    )
-            continue
-        chat_presenter.start_progress()
-        request_started = perf_counter()
-        outcome = _run_turn(
-            graph, messages, user_input, chat_presenter, request_started
-        )
-        messages = outcome.messages
-        if outcome.context_tokens is not None:
-            last_context_tokens = outcome.context_tokens
-        if outcome.cancelled:
-            chat_presenter.show_cancelled()
-        elif outcome.error is not None:
-            chat_presenter.show_error(
-                str(outcome.error) or type(outcome.error).__name__
-            )
-        else:
-            chat_presenter.show_response(outcome.response)
-        if context_limit is not None and outcome.context_tokens is not None:
-            chat_presenter.show_context_usage(outcome.context_tokens, context_limit)
-            if outcome.context_tokens >= context_limit * CONTEXT_WARNING_RATIO:
-                chat_presenter.show_context_warning(
-                    outcome.context_tokens, context_limit
-                )
+        if not session.handle(user_input):
+            return
+
+
+class _TurnCancelled(Exception):
+    """Annulation demandée par `ChatSession.cancel` (équivalent d'un Ctrl+C)."""
 
 
 @dataclass
@@ -177,6 +245,7 @@ def _run_turn(
     user_input: str,
     chat_presenter: ChatPresenter,
     request_started: float,
+    cancel_requested: Event,
 ) -> _TurnOutcome:
     """Exécute un tour (une demande de l'utilisateur) et en renvoie le résultat.
 
@@ -205,6 +274,8 @@ def _run_turn(
                     will_retry=not state.get("error"),
                 )
                 seen_messages = max(seen_messages, len(last_messages))
+                if cancel_requested.is_set():
+                    raise _TurnCancelled
         finally:
             chat_presenter.stop_progress()
             chat_presenter.show_total_duration(perf_counter() - request_started)
@@ -215,7 +286,7 @@ def _run_turn(
         if not isinstance(content, str):
             raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
         response = content
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, _TurnCancelled):
         cancelled = True
     except EOFError:
         failure = RuntimeError("L'entrée standard a été fermée pendant le tour.")
