@@ -14,8 +14,8 @@ class CliChatPresenter:
 
     Les lignes de résultat vont sur la sortie `output_fn` (stdout) ; l'indicateur
     animé s'écrit sur `progress_stream` (stderr) et seulement si c'est un terminal
-    interactif. `input_fn`, `output_fn` et `render_markdown` (rendu des réponses, brut
-    si absent) sont injectables pour les tests.
+    interactif. `input_fn`, `output_fn`, `render_markdown` et `render_diff` (rendu des
+    réponses et des diffs, brut si absent) sont injectables pour les tests.
     """
 
     def __init__(
@@ -24,7 +24,9 @@ class CliChatPresenter:
         output_fn: Callable[[str], None] = print,
         progress_stream: TextIO = sys.stderr,
         render_markdown: Callable[[str], str] | None = None,
+        render_diff: Callable[[str], str] | None = None,
     ) -> None:
+        self._render_diff = render_diff
         self._render_markdown = render_markdown
         self._input = input_fn
         self._output = output_fn
@@ -156,7 +158,7 @@ class CliChatPresenter:
         """Suspend l'animation, montre le diff et demande confirmation (refus par défaut)."""
         self.stop_progress()
         self._emit(f"Modification proposée pour {path} :")
-        self._emit(diff)
+        self._emit(self._render_diff(diff) if self._render_diff else diff)
         try:
             return self._confirm("Appliquer cette modification ? [o/N] ")
         finally:

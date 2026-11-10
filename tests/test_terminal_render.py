@@ -1,5 +1,5 @@
 from iacli.adapters.cli_chat import CliChatPresenter
-from iacli.adapters.terminal_render import render_markdown
+from iacli.adapters.terminal_render import render_diff, render_markdown
 
 BOLD = "\x1b[1m"
 
@@ -51,3 +51,45 @@ def test_presenter_shows_the_raw_response_without_a_renderer():
     presenter.show_response("Un mot **gras**")
 
     assert output == ["\niacli> Un mot **gras**\n"]
+
+
+DIFF = "--- a/f.py\n+++ b/f.py\n@@ -1 +1 @@\n-ancien\n+nouveau\n"
+
+
+def test_diff_keeps_every_line_and_is_colored():
+    rendered = render_diff(DIFF)
+
+    for text in ("a/f.py", "@@ -1 +1 @@", "ancien", "nouveau"):
+        assert text in rendered
+    assert "\x1b[" in rendered
+
+
+def test_diff_colors_added_and_removed_lines_differently():
+    lines = render_diff(DIFF).splitlines()
+    removed = next(line for line in lines if "ancien" in line)
+    added = next(line for line in lines if "nouveau" in line)
+
+    assert removed.split("ancien")[0] != added.split("nouveau")[0]
+
+
+def test_presenter_renders_the_diff_of_a_file_write_when_a_renderer_is_given():
+    output = []
+    presenter = CliChatPresenter(
+        input_fn=lambda _prompt: "o",
+        output_fn=output.append,
+        render_diff=render_diff,
+    )
+
+    assert presenter.confirm_file_write("f.py", DIFF) is True
+
+    shown = next(line for line in output if "nouveau" in line)
+    assert "\x1b[" in shown
+
+
+def test_presenter_shows_the_raw_diff_without_a_renderer():
+    output = []
+    presenter = CliChatPresenter(input_fn=lambda _prompt: "n", output_fn=output.append)
+
+    presenter.confirm_file_write("f.py", DIFF)
+
+    assert DIFF in output
