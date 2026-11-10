@@ -579,3 +579,44 @@ def test_a_valid_response_resets_the_truncation_tracking():
     )
 
     assert "limite de tokens" in message
+
+
+def _read_call(index: int) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "id": f"read-{index}",
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
+def test_tool_budget_is_not_cut_short_by_the_graph_recursion_limit():
+    # 20 exécutions d'outils = plus de 25 étapes du graphe, mais sous max_iterations.
+    model = FakeChatModel(
+        [*(_read_call(index) for index in range(20)), AIMessage(content="Terminé.")]
+    )
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert result["messages"][-1].content == "Terminé."
+    assert len(model.calls) == 21
+
+
+def test_malformed_retries_between_tool_calls_do_not_hit_the_recursion_limit():
+    responses: list[AIMessage] = []
+    for index in range(10):
+        responses += [AIMessage(content=BROKEN), AIMessage(content=BROKEN)]
+        responses.append(_read_call(index))
+    responses.append(AIMessage(content="Terminé."))
+    model = FakeChatModel(responses)
+    graph = build_control_graph(model, [read_file], lambda _state: True)
+
+    result = graph.invoke({"messages": [HumanMessage(content="Lis README.md")]})
+
+    assert result["messages"][-1].content == "Terminé."
