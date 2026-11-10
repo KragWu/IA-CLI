@@ -167,7 +167,11 @@ def _run_turn(
             ):
                 produced_state = True
                 last_messages = state["messages"]
-                _present_messages(last_messages[seen_messages:], chat_presenter)
+                _present_messages(
+                    last_messages[seen_messages:],
+                    chat_presenter,
+                    will_retry=not state.get("error"),
+                )
                 seen_messages = max(seen_messages, len(last_messages))
         finally:
             chat_presenter.stop_progress()
@@ -251,16 +255,22 @@ def _without_incomplete_tail(
 
 
 def _present_messages(
-    messages: list[BaseMessage], chat_presenter: ChatPresenter
+    messages: list[BaseMessage],
+    chat_presenter: ChatPresenter,
+    *,
+    will_retry: bool = True,
 ) -> None:
     """Présente les nouveaux messages du graphe, dans l'ordre.
 
     Un appel d'outil illisible n'est pas annoncé comme une réponse : seule la
-    correction qui le suit informe l'utilisateur que l'agent réessaie."""
+    correction qui le suit informe l'utilisateur que l'agent réessaie. Quand le tour
+    est déjà en erreur (`will_retry` faux), il n'y aura pas de réessai : on ne l'annonce pas."""
     for index, message in enumerate(messages):
         has_next = index + 1 < len(messages)
         if has_next and is_tool_call_feedback(messages[index + 1]):
             continue  # appel raté : annoncé par sa correction, pas comme une réponse
+        if not will_retry and is_tool_call_feedback(message):
+            continue
         _present_message(message, chat_presenter)
 
 
