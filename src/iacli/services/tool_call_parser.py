@@ -76,17 +76,15 @@ def _error_message(reason: str) -> str:
     )
 
 
-def _malformed(reason: str) -> MalformedToolCall:
-    return MalformedToolCall(_error_message(reason))
-
-
 def _truncated() -> MalformedToolCall:
     return MalformedToolCall(_error_message(_TRUNCATED_REASON), truncated=True)
 
 
-def _malformed_or_truncated(reason: str, truncated: bool) -> MalformedToolCall:
+def _malformed(reason: str, *, truncated: bool = False) -> MalformedToolCall:
     """Un appel coupé par la limite de tokens se corrige autrement qu'une erreur de syntaxe."""
-    return _truncated() if truncated else _malformed(reason)
+    if truncated:
+        return _truncated()
+    return MalformedToolCall(_error_message(reason))
 
 
 def _skip_spaces(text: str, position: int) -> int:
@@ -143,11 +141,12 @@ def _parse_tagged_tool_calls(
         try:
             payload, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as error:
-            return _malformed_or_truncated(f"JSON illisible ({error}).", truncated)
+            return _malformed(f"JSON illisible ({error}).", truncated=truncated)
         end = _skip_spaces(text, end)
         if not text.startswith(_TOOL_CALL_CLOSE, end):
-            return _malformed_or_truncated(
-                "une balise <tool_call> n'est pas refermée par </tool_call>.", truncated
+            return _malformed(
+                "une balise <tool_call> n'est pas refermée par </tool_call>.",
+                truncated=truncated,
             )
         position = end + len(_TOOL_CALL_CLOSE)
         if not isinstance(payload, dict):
