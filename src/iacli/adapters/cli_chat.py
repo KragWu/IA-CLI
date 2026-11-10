@@ -57,6 +57,9 @@ class CliChatPresenter:
     def show_error(self, message: str) -> None:
         self._emit(f"erreur> {message}")
 
+    def show_cancelled(self) -> None:
+        self._emit("Génération annulée")
+
     def show_tool_call(self, name: str, arguments: dict[str, object]) -> None:
         serialized_arguments = json.dumps(arguments, ensure_ascii=False)
         self._emit(f"outil> {name}({serialized_arguments})")

@@ -118,7 +118,9 @@ def run_chat(
             graph, messages, user_input, chat_presenter, request_started
         )
         messages = outcome.messages
-        if outcome.error is not None:
+        if outcome.cancelled:
+            chat_presenter.show_cancelled()
+        elif outcome.error is not None:
             chat_presenter.show_error(
                 str(outcome.error) or type(outcome.error).__name__
             )
@@ -139,6 +141,7 @@ class _TurnOutcome:
     messages: list[BaseMessage]
     response: str = ""
     error: Exception | None = None
+    cancelled: bool = False
     context_tokens: int | None = None
 
 
@@ -151,13 +154,16 @@ def _run_turn(
 ) -> _TurnOutcome:
     """Exécute un tour (une demande de l'utilisateur) et en renvoie le résultat.
 
-    Les messages produits sont présentés au fil de l'eau. Toute erreur, Ctrl+C ou
-    fermeture de l'entrée est capturée dans `_TurnOutcome.error` pour que la session continue.
+    Les messages produits sont présentés au fil de l'eau. Toute erreur ou fermeture de
+    l'entrée est capturée dans `_TurnOutcome.error`, et Ctrl+C dans `_TurnOutcome.cancelled`,
+    pour que la session continue.
     """
     turn_input = [*messages, HumanMessage(content=user_input)]
     last_messages = turn_input
     produced_state = False
     seen_messages = len(messages) + 1
+    failure: Exception | None = None
+    cancelled = False
     try:
         try:
             for state in graph.stream(
@@ -184,19 +190,18 @@ def _run_turn(
             raise TypeError("Le contenu de la réponse du modèle n'est pas du texte.")
         response = content
     except KeyboardInterrupt:
-        failure: Exception | None = RuntimeError("Tour interrompu par l'utilisateur.")
+        cancelled = True
     except EOFError:
         failure = RuntimeError("L'entrée standard a été fermée pendant le tour.")
     except Exception as error:
         failure = error
-    else:
-        failure = None
 
     context_tokens = _context_tokens(last_messages, len(messages) + 1)
-    if failure is not None:
+    if cancelled or failure is not None:
         return _TurnOutcome(
             _without_incomplete_tail(last_messages, turn_start=len(messages)),
             error=failure,
+            cancelled=cancelled,
             context_tokens=context_tokens,
         )
     return _TurnOutcome(

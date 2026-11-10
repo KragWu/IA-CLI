@@ -75,7 +75,7 @@ vous> Explique le fichier main.py
 - `/exit` ou `/quit` (insensible à la casse) ferme la conversation.
 - `Ctrl+D` (fin de fichier) ou `Ctrl+C` **à l'invite `vous>`** ferme aussi la conversation.
 - `Ctrl+C` **pendant le traitement d'une demande** annule seulement ce tour (et arrête la commande shell en cours) :
-  la conversation reste ouverte.
+  `Génération annulée` s'affiche (ce n'est pas une erreur) et la conversation reste ouverte.
 
 L'historique de la conversation est conservé en mémoire pendant la session uniquement ; il n'est pas enregistré sur le
 disque.

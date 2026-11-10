@@ -1132,7 +1132,8 @@ def test_ctrl_c_during_a_turn_cancels_only_that_turn(tmp_path):
         tools_factory=create_workspace_tools,
     )
 
-    assert any(line.startswith("erreur>") and "interrompu" in line for line in output)
+    assert "Génération annulée" in output
+    assert not any(line.startswith("erreur>") for line in output)
     assert any("Réponse 2" in line for line in output)
     assert [
         message.content
