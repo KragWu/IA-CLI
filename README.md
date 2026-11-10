@@ -155,6 +155,7 @@ Détails de fonctionnement :
 
 - La réponse finale est rendue en markdown (gras, titres, listes, blocs de code colorés) quand la sortie est un
   terminal interactif ; redirigée vers un fichier ou un tube, elle reste en texte brut.
+  Les diffs proposés avant une écriture sont colorés de la même façon (lignes ajoutées et supprimées).
 - Un indicateur animé avec la durée écoulée (uniquement dans un terminal interactif ; sur `stderr`), le nom des outils
   appelés et la réception de leurs résultats. L'affichage montre l'avancement sans révéler le raisonnement interne
   détaillé du modèle. Quand un appel d'outil illisible est renvoyé au modèle, l'indicateur affiche

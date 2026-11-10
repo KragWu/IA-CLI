@@ -8,7 +8,7 @@ from pathlib import Path
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter
-from iacli.adapters.terminal_render import render_markdown
+from iacli.adapters.terminal_render import render_diff, render_markdown
 from iacli.domain.config import OllamaSettings, resolve_newline
 from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
@@ -101,7 +101,8 @@ def handle_chat(args: argparse.Namespace) -> None:
         instructions,
         model_name,
         presenter=CliChatPresenter(
-            render_markdown=render_markdown if sys.stdout.isatty() else None
+            render_markdown=render_markdown if sys.stdout.isatty() else None,
+            render_diff=render_diff if sys.stdout.isatty() else None,
         ),
         # Fin de ligne des nouveaux fichiers : réglage `[files] end_of_line`, sinon l'OS.
         tools_factory=partial(
