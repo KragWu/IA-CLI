@@ -1,7 +1,13 @@
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
-from iacli.domain.commands import COMMANDS, command_names, find_command
+from iacli.domain.commands import (
+    COMMANDS,
+    command_names,
+    find_command,
+    is_command_input,
+)
 from iacli.infrastructure.workspace_tools import create_workspace_tools
 from iacli.services.chat import run_chat
 from tests.fakes import FakeChatModel
@@ -84,3 +90,34 @@ def test_a_message_containing_a_path_is_not_taken_for_a_command(tmp_path):
     _, model = _run(tmp_path, ["/etc/hosts est lisible ?", "/exit"])
 
     assert len(model.calls) == 1
+
+
+def test_an_unknown_word_followed_by_text_is_a_message_for_the_model(tmp_path):
+    output, model = _run(tmp_path, ["/tmp contient quoi ?", "/exit"])
+
+    assert len(model.calls) == 1
+    assert not any(line.startswith("erreur>") for line in output)
+
+
+def test_a_known_command_accepts_trailing_text(tmp_path):
+    output, model = _run(tmp_path, ["/help merci", "/exit"])
+
+    assert "Commandes disponibles :" in output
+    assert model.calls == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("/help", True),
+        ("/HELP encore", True),
+        ("/inconnue", True),
+        ("  /inconnue  ", True),
+        ("/tmp contient quoi ?", False),
+        ("/etc/hosts", False),
+        ("bonjour", False),
+        ("", False),
+    ],
+)
+def test_is_command_input_needs_a_known_command_or_a_lone_word(text, expected):
+    assert is_command_input(text) is expected

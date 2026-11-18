@@ -19,7 +19,7 @@ from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.styles import Style
 
 from iacli.adapters.cli_chat import PromptStatus
-from iacli.domain.commands import SlashCommand, find_command, looks_like_command
+from iacli.domain.commands import SlashCommand, find_command, is_command_input
 
 # Part de la fenêtre de contexte à partir de laquelle la barre d'état passe à l'orange / au rouge.
 WARN_RATIO = 0.6
@@ -70,7 +70,7 @@ class SlashCommandLexer(Lexer):
 
         def lex_line(line_number: int) -> StyleAndTextTuples:
             line = lines[line_number]
-            if line_number != 0 or not looks_like_command(line):
+            if line_number != 0 or not is_command_input(line):
                 return [("", line)]
             word, rest = _split_first_word(line)
             style = (

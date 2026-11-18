@@ -36,6 +36,16 @@ def looks_like_command(text: str) -> bool:
     return _COMMAND_WORD.fullmatch(_first_word(text)) is not None
 
 
+def is_command_input(text: str) -> bool:
+    """True si la saisie est destinée aux commandes plutôt qu'au modèle.
+
+    Une commande connue, avec ou sans texte derrière, en est une. Un mot inconnu de la forme
+    `/nom` n'en est une que seul : `/tmp contient quoi ?` est un message ordinaire."""
+    if find_command(text) is not None:
+        return True
+    return looks_like_command(text) and len(text.split()) == 1
+
+
 def find_command(text: str) -> SlashCommand | None:
     """Commande enregistrée désignée par le premier mot de `text` (casse ignorée)."""
     word = _first_word(text).casefold()
