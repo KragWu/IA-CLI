@@ -128,8 +128,8 @@ class ChatSession:
 
     def handle(self, user_input: str) -> bool:
         """Traite une saisie (message ou slash-command) ; False quand la session doit se terminer."""
-        user_input = user_input.strip()
-        if not user_input:
+        # Seule la détection (saisie vide, commande) ignore les blancs : un message part tel quel.
+        if not user_input.strip():
             return True
         parsed = parse_input(user_input)
         if parsed.kind is InputKind.MESSAGE:
