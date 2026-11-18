@@ -126,3 +126,46 @@ def test_cancel_while_idle_does_not_cancel_the_next_turn(tmp_path):
 
     assert "Génération annulée" not in output
     assert any("Réponse 1" in line for line in output)
+
+
+def test_cancel_during_the_last_step_keeps_the_complete_answer(tmp_path):
+    holder = {}
+
+    class LastStepModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            holder["session"].cancel()
+            return AIMessage(content=f"Réponse complète {len(self.calls)}")
+
+    model = LastStepModel()
+    session, output = _session(tmp_path, model)
+    holder["session"] = session
+
+    session.handle("question")
+    session.handle("suite")
+
+    assert any("Réponse complète 1" in line for line in output)
+    assert "Génération annulée" not in output
+    # La réponse terminée fait partie de l'historique du tour suivant.
+    assert [m.content for m in model.calls[1] if isinstance(m, AIMessage)] == [
+        "Réponse complète 1"
+    ]
+
+
+def test_cancel_still_stops_a_turn_that_is_retrying_an_unreadable_tool_call(tmp_path):
+    holder = {}
+
+    class UnreadableCallModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            holder["session"].cancel()
+            return AIMessage(content='<tool_call>{"name": ')
+
+    model = UnreadableCallModel()
+    session, output = _session(tmp_path, model)
+    holder["session"] = session
+
+    session.handle("question")
+
+    assert "Génération annulée" in output
+    assert len(model.calls) == 1
