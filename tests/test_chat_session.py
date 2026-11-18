@@ -169,3 +169,22 @@ def test_cancel_still_stops_a_turn_that_is_retrying_an_unreadable_tool_call(tmp_
 
     assert "Génération annulée" in output
     assert len(model.calls) == 1
+
+
+def test_the_message_sent_to_the_model_keeps_its_indentation(tmp_path):
+    model = FakeChatModel()
+    session, _ = _session(tmp_path, model)
+    snippet = "    def f():\n        return 1\n"
+
+    session.handle(snippet)
+
+    (sent,) = [m for m in model.calls[0] if isinstance(m, HumanMessage)]
+    assert sent.content == snippet
+
+
+def test_a_command_is_still_recognised_around_whitespace(tmp_path):
+    session, output = _session(tmp_path)
+
+    assert session.handle("  /exit  ") is False
+    assert session.handle("\n/help\n") is True
+    assert "Commandes disponibles :" in output
