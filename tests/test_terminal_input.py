@@ -46,7 +46,7 @@ def test_no_completion_outside_the_command_word(text):
 
 
 def _first_line_styles(text):
-    lexer = SlashCommandLexer(COMMANDS)
+    lexer = SlashCommandLexer()
     return lexer.lex_document(Document(text))(0)
 
 
@@ -62,10 +62,23 @@ def test_an_unknown_word_followed_by_text_is_not_flagged_as_a_command():
     assert _first_line_styles("/tmp contient quoi") == [("", "/tmp contient quoi")]
 
 
-def test_arguments_and_plain_text_keep_the_default_style():
+def test_a_command_followed_by_text_is_highlighted_as_an_error():
     styles = _first_line_styles("/help suite")
 
-    assert styles == [("class:command", "/help"), ("", " suite")]
+    assert styles == [("class:unknown-command", "/help"), ("", " suite")]
+
+
+def test_the_style_follows_the_whole_text_not_only_its_first_line():
+    lexer = SlashCommandLexer()
+
+    plain = lexer.lex_document(Document("/tmp" + chr(10) + "suite"))(0)
+    refused = lexer.lex_document(Document("/clear" + chr(10) + "suite"))(0)
+
+    assert plain == [("", "/tmp")]
+    assert refused == [("class:unknown-command", "/clear")]
+
+
+def test_plain_text_keeps_the_default_style():
     assert _first_line_styles("bonjour") == [("", "bonjour")]
 
 

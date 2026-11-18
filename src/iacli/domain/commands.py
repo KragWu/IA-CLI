@@ -1,7 +1,8 @@
-"""Slash-commands du chat : registre partagé par les services et l'autocomplétion."""
+"""Slash-commands du chat : registre et analyse d'une saisie, partagés par services et adapters."""
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 
 
 @dataclass(frozen=True)
@@ -22,27 +23,40 @@ COMMANDS = (
 _COMMAND_WORD = re.compile(r"/[a-z][a-z0-9_-]*", re.IGNORECASE)
 
 
-def _first_word(text: str) -> str:
+class InputKind(StrEnum):
+    """Nature d'une saisie du chat."""
+
+    MESSAGE = "message"  # destinée au modèle
+    COMMAND = "command"  # commande connue, seule
+    COMMAND_WITH_ARGUMENTS = "command_with_arguments"  # commande connue suivie de texte
+    UNKNOWN_COMMAND = "unknown_command"  # mot `/nom` inconnu, seul
+
+
+@dataclass(frozen=True)
+class ParsedInput:
+    """Résultat de `parse_input` : la nature de la saisie et, pour une commande, son mot."""
+
+    kind: InputKind
+    word: str = ""  # premier mot tel que saisi (vide pour un message)
+    command: SlashCommand | None = None  # commande enregistrée désignée par `word`
+
+
+def parse_input(text: str) -> ParsedInput:
+    """Classe une saisie ; c'est la seule règle de reconnaissance des commandes.
+
+    Une commande connue (casse ignorée) doit être seule : avec du texte derrière, y compris
+    sur d'autres lignes, ce n'est ni une commande ni un message, pour ne jamais perdre ce
+    texte en silence. Un mot inconnu de la forme `/nom` n'est une erreur que s'il est seul ;
+    `/tmp contient quoi ?` ou `/etc/hosts` sont des messages ordinaires."""
     words = text.split(maxsplit=1)
-    return words[0] if words else ""
-
-
-def looks_like_command(text: str) -> bool:
-    """True si la saisie commence par un mot de la forme `/nom`."""
-    return _COMMAND_WORD.fullmatch(_first_word(text)) is not None
-
-
-def is_command_input(text: str) -> bool:
-    """True si la saisie est destinée aux commandes plutôt qu'au modèle.
-
-    Une commande connue, avec ou sans texte derrière, en est une. Un mot inconnu de la forme
-    `/nom` n'en est une que seul : `/tmp contient quoi ?` est un message ordinaire."""
-    if find_command(text) is not None:
-        return True
-    return looks_like_command(text) and len(text.split()) == 1
-
-
-def find_command(text: str) -> SlashCommand | None:
-    """Commande enregistrée désignée par le premier mot de `text` (casse ignorée)."""
-    word = _first_word(text).casefold()
-    return next((command for command in COMMANDS if command.name == word), None)
+    if not words:
+        return ParsedInput(InputKind.MESSAGE)
+    word = words[0]
+    has_arguments = len(words) > 1
+    command = next((c for c in COMMANDS if c.name == word.casefold()), None)
+    if command is not None:
+        kind = InputKind.COMMAND_WITH_ARGUMENTS if has_arguments else InputKind.COMMAND
+        return ParsedInput(kind, word, command)
+    if not has_arguments and _COMMAND_WORD.fullmatch(word):
+        return ParsedInput(InputKind.UNKNOWN_COMMAND, word)
+    return ParsedInput(InputKind.MESSAGE)
