@@ -3,6 +3,7 @@
 Seul module qui connaît `prompt_toolkit` ; le presenter n'en reçoit que la fonction de lecture.
 """
 
+import contextlib
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import StyleAndTextTuples
-from prompt_toolkit.history import FileHistory
+from prompt_toolkit.history import FileHistory, History, InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.lexers import Lexer
@@ -132,9 +133,35 @@ def _key_bindings() -> KeyBindings:
     return bindings
 
 
+class _BestEffortFileHistory(FileHistory):
+    """Historique fichier qui ne fait jamais échouer la saisie : une erreur d'accès est ignorée."""
+
+    def load_history_strings(self) -> Iterable[str]:
+        try:
+            yield from super().load_history_strings()
+        except OSError:
+            return
+
+    def store_string(self, string: str) -> None:
+        with contextlib.suppress(OSError):
+            super().store_string(string)
+
+
+def _create_history(history_path: Path | None) -> History:
+    """Historique enregistré dans `history_path`, ou en mémoire (session seulement) sans chemin
+    ou si le dossier est inutilisable."""
+    if history_path is None:
+        return InMemoryHistory()
+    try:
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return InMemoryHistory()
+    return _BestEffortFileHistory(str(history_path))
+
+
 def create_prompt_input(
     commands: Sequence[SlashCommand],
-    history_path: Path,
+    history_path: Path | None,
     status: Callable[[], PromptStatus],
     **session_options: Any,
 ) -> Callable[[str], str]:
@@ -143,9 +170,8 @@ def create_prompt_input(
 
     Ctrl+D lève `EOFError` et Ctrl+C `KeyboardInterrupt`. `session_options` (entrée,
     sortie…) sont transmis à `PromptSession`, ce qui permet de tester sans terminal."""
-    history_path.parent.mkdir(parents=True, exist_ok=True)
     session: PromptSession[str] = PromptSession(
-        history=FileHistory(str(history_path)),
+        history=_create_history(history_path),
         completer=SlashCommandCompleter(commands),
         lexer=SlashCommandLexer(commands),
         key_bindings=_key_bindings(),

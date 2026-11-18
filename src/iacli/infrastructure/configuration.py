@@ -5,6 +5,7 @@ from pathlib import Path
 
 from iacli.domain.config import (
     DEFAULT_NUM_CTX,
+    ChatSettings,
     ConfigurationState,
     EndOfLine,
     FileSettings,
@@ -25,6 +26,12 @@ num_ctx = 18000
 # Un fichier existant garde sa fin de ligne la plus fréquente. Les scripts shell
 # (.sh, .bash, .zsh) et les Makefile sont toujours créés en LF, les .bat et .cmd en CRLF.
 end_of_line = "auto"
+
+[chat]
+# Enregistrer en clair les messages saisis dans le fichier `history` de ce dossier
+# (flèches haut et bas entre deux sessions). Désactivé par défaut : un secret collé
+# dans le chat resterait sur le disque.
+save_history = false
 """
 
 # Contenu initial de `IACLI.md`, injecté dans l'invite système du chat.
@@ -42,9 +49,10 @@ _DEFAULT_OLLAMA = {
     "model": "qwen2.5-coder:7b",
 }
 # Valeurs renvoyées quand `config.toml` est illisible (`num_ctx` ajouté à part).
-_DEFAULTS: dict[str, str | int] = {
+_DEFAULTS: dict[str, str | int | bool] = {
     **_DEFAULT_OLLAMA,
     "end_of_line": EndOfLine.AUTO.value,
+    "save_history": False,
 }
 
 
@@ -73,10 +81,13 @@ class FileConfigurationGateway:
             num_ctx=int(values["num_ctx"]),
         )
         files = FileSettings(end_of_line=EndOfLine(str(values["end_of_line"])))
-        return ConfigurationState(target, settings, tuple(warnings), files)
+        chat = ChatSettings(save_history=bool(values["save_history"]))
+        return ConfigurationState(target, settings, tuple(warnings), files, chat)
 
     @staticmethod
-    def _load_values(config_path: Path) -> tuple[dict[str, str | int], list[str]]:
+    def _load_values(
+        config_path: Path,
+    ) -> tuple[dict[str, str | int | bool], list[str]]:
         """Valide les sections [ollama] et [files] ; renvoie (valeurs, avertissements).
 
         À la première erreur, toutes les valeurs par défaut sont renvoyées avec le message d'erreur."""
@@ -88,7 +99,7 @@ class FileConfigurationGateway:
             ollama = document.get("ollama", {})
             if not isinstance(ollama, dict):
                 raise ValueError("La section [ollama] doit être une table TOML.")
-            values: dict[str, str | int] = {}
+            values: dict[str, str | int | bool] = {}
             for key, default in _DEFAULT_OLLAMA.items():
                 value = ollama.get(key, default)
                 if not isinstance(value, str) or not value.strip():
@@ -116,6 +127,15 @@ class FileConfigurationGateway:
                     f"La valeur files.end_of_line doit être l'une de : {quoted}."
                 )
             values["end_of_line"] = end_of_line.strip().lower()
+            chat = document.get("chat", {})
+            if not isinstance(chat, dict):
+                raise ValueError("La section [chat] doit être une table TOML.")
+            save_history = chat.get("save_history", False)
+            if not isinstance(save_history, bool):
+                raise ValueError(
+                    "La valeur chat.save_history doit être un booléen (true ou false)."
+                )
+            values["save_history"] = save_history
         except (OSError, tomllib.TOMLDecodeError, ValueError) as error:
             return {**_DEFAULTS, "num_ctx": DEFAULT_NUM_CTX}, [str(error)]
         return values, []
