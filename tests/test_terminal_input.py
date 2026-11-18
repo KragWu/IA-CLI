@@ -12,6 +12,7 @@ from iacli.adapters.terminal_input import (
     SlashCommandLexer,
     create_prompt_input,
     render_toolbar,
+    resolve_enter,
 )
 from iacli.domain.commands import COMMANDS, command_names
 
@@ -96,6 +97,28 @@ def test_backslash_then_enter_continues_on_a_new_line(tmp_path):
     assert _read(tmp_path, "ligne un\\\rligne deux\r") == "ligne un\nligne deux"
 
 
+BACKSLASH = chr(92)
+ENTER = chr(13)
+
+
+def test_a_doubled_backslash_at_the_end_is_sent_as_a_single_one(tmp_path):
+    keys = "dir C:" + BACKSLASH + "foo" + BACKSLASH * 2 + ENTER
+
+    assert _read(tmp_path, keys) == "dir C:" + BACKSLASH + "foo" + BACKSLASH
+
+
+def test_three_backslashes_keep_one_and_continue_on_a_new_line(tmp_path):
+    keys = "p" + BACKSLASH * 3 + ENTER + "x" + ENTER
+
+    assert _read(tmp_path, keys) == "p" + BACKSLASH + chr(10) + "x"
+
+
+def test_a_backslash_inside_a_line_is_left_alone(tmp_path):
+    keys = "a" + BACKSLASH + "b" + ENTER
+
+    assert _read(tmp_path, keys) == "a" + BACKSLASH + "b"
+
+
 def test_ctrl_j_inserts_a_new_line(tmp_path):
     assert _read(tmp_path, "a\x0ab\r") == "a\nb"
 
@@ -165,3 +188,17 @@ def test_presenter_reads_the_prompt_through_prompt_fn_but_confirms_with_input_fn
         presenter.confirm_shell_command("ls", __import__("pathlib").Path(".")) is True
     )
     assert prompts == ["vous> "]
+
+
+@pytest.mark.parametrize(
+    ("backslashes", "kept", "submit"),
+    [(0, 0, True), (1, 0, False), (2, 1, True), (3, 1, False), (4, 2, True)],
+)
+def test_resolve_enter_pairs_the_trailing_backslashes(backslashes, kept, submit):
+    backslash = chr(92)
+
+    text, sent = resolve_enter("abc" + backslash * backslashes)
+
+    assert sent is submit
+    expected = "abc" + backslash * kept + ("" if submit else chr(10))
+    assert text == expected

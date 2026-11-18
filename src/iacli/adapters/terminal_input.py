@@ -113,16 +113,31 @@ def render_toolbar(status: PromptStatus) -> StyleAndTextTuples:
     return tokens
 
 
+def resolve_enter(text: str) -> tuple[str, bool]:
+    """Effet d'Entrée sur `text` : (nouveau texte, True pour envoyer le message).
+
+    Les barres obliques inverses en fin de texte vont par paires : chaque paire donne une barre
+    littérale ; si une barre reste seule, elle demande de continuer sur la ligne suivante."""
+    backslash = "\\"
+    trailing = len(text) - len(text.rstrip(backslash))
+    body = text[: len(text) - trailing]
+    literal = backslash * (trailing // 2)
+    if trailing % 2:
+        return body + literal + "\n", False
+    return body + literal, True
+
+
 def _key_bindings() -> KeyBindings:
     bindings = KeyBindings()
 
     @bindings.add("enter")
     def _submit_or_continue(event: KeyPressEvent) -> None:
         buffer = event.current_buffer
-        if buffer.text.endswith("\\"):
-            buffer.delete_before_cursor(1)
-            buffer.insert_text("\n")
-        else:
+        text, submit = resolve_enter(buffer.text)
+        if text != buffer.text:
+            buffer.text = text
+            buffer.cursor_position = len(text)
+        if submit:
             buffer.validate_and_handle()
 
     @bindings.add("c-j")
