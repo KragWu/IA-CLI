@@ -1,5 +1,8 @@
 """Historique de saisie : désactivé par défaut, activé par `[chat] save_history`."""
 
+import os
+import stat
+import sys
 from argparse import Namespace
 
 import pytest
@@ -172,3 +175,51 @@ def test_handle_chat_saves_the_history_only_when_enabled(
     cli.handle_chat(Namespace(config_dir=tmp_path))
 
     assert received == [None if expected is None else tmp_path / expected]
+
+
+posix_only = pytest.mark.skipif(
+    sys.platform == "win32", reason="les droits POSIX n'existent pas sous Windows"
+)
+
+
+def _mode(path):
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+@posix_only
+def test_a_new_history_file_is_private_to_its_owner(tmp_path):
+    history = tmp_path / "config" / "history"
+    previous = os.umask(0o022)
+    try:
+        with create_pipe_input() as pipe:
+            read = create_prompt_input(
+                COMMANDS,
+                history_path=history,
+                status=lambda: PromptStatus("m", None, None),
+                input=pipe,
+                output=DummyOutput(),
+            )
+            pipe.send_text("jeton secret" + chr(13))
+            read("vous> ")
+    finally:
+        os.umask(previous)
+
+    assert _mode(history) == 0o600
+    assert "jeton secret" in history.read_text(encoding="utf-8")
+
+
+@posix_only
+def test_an_existing_world_readable_history_file_is_made_private(tmp_path):
+    history = tmp_path / "history"
+    history.write_text("ancien", encoding="utf-8")
+    history.chmod(0o644)
+
+    create_prompt_input(
+        COMMANDS,
+        history_path=history,
+        status=lambda: PromptStatus("m", None, None),
+        input=None,
+        output=DummyOutput(),
+    )
+
+    assert _mode(history) == 0o600

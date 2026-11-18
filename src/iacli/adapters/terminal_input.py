@@ -4,6 +4,7 @@ Seul module qui connaît `prompt_toolkit` ; le presenter n'en reçoit que la fon
 """
 
 import contextlib
+import os
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -172,9 +173,18 @@ def _create_history(history_path: Path | None) -> History:
         return InMemoryHistory()
     try:
         history_path.parent.mkdir(parents=True, exist_ok=True)
+        _make_private(history_path)
     except OSError:
         return InMemoryHistory()
     return _BestEffortFileHistory(str(history_path))
+
+
+def _make_private(path: Path) -> None:
+    """Crée le fichier s'il manque et le réserve à son propriétaire (mode 0600) : il contient
+    en clair ce que l'utilisateur a saisi. Sans effet sous Windows, où les droits du profil
+    s'appliquent."""
+    os.close(os.open(path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600))
+    path.chmod(0o600)
 
 
 def create_prompt_input(
