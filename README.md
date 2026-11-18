@@ -83,7 +83,7 @@ Dans un terminal interactif, l'invite `vous>` offre :
 - **Tab** complète les slash-commands (`/` puis Tab liste toutes les commandes) ;
 - la **coloration** du premier mot : cyan pour une commande connue, rouge pour une commande inconnue ;
 - l'**historique** (flèches haut et bas) pour la session en cours ; il n'est écrit dans `history` à côté de `config.toml` que
-  si `save_history = true` dans la section `[chat]` ;
+  si `save_history = true` dans la section `[chat]` (sous Linux et macOS, le fichier est réservé à son propriétaire, mode `0600`) ;
 - une **barre d'état** avec le modèle et l'occupation du contexte (vert, orange puis rouge à partir de 60 % et 80 %).
 
 Redirigée (tube, fichier), la saisie se limite à une ligne lue sur l'entrée standard et l'affichage reste en texte brut.
