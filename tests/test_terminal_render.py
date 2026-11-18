@@ -199,3 +199,23 @@ def test_a_rendered_response_never_reaches_the_last_terminal_column(monkeypatch)
     lines = _plain(output[0]).splitlines()
     assert len(lines) > 3
     assert max(len(line) for line in lines) < 40
+
+
+def test_angle_brackets_in_prose_are_kept_as_text():
+    plain = _plain(render_markdown("Utilise List<String> et <tool_call> ici"))
+
+    assert "List<String>" in plain
+    assert "<tool_call>" in plain
+
+
+def test_html_looking_blocks_are_shown_not_swallowed():
+    plain = _plain(render_markdown("<div>bloc html</div>"))
+
+    assert "<div>bloc html</div>" in plain
+
+
+def test_markdown_formatting_still_works_next_to_angle_brackets():
+    rendered = render_markdown("**gras** et List<String>")
+
+    assert "**" not in rendered
+    assert "List<String>" in _plain(rendered)

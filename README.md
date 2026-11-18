@@ -176,7 +176,7 @@ Détails de fonctionnement :
 ### Ce qui s'affiche pendant un tour
 
 - La réponse finale est rendue en markdown (gras, titres, listes, blocs de code colorés) quand la sortie est un
-  terminal interactif ; redirigée vers un fichier ou un tube, ou dans une console Windows sans séquences ANSI, elle reste en texte brut.
+  terminal interactif (les balises comme `List<String>` ou `<div>` restent du texte, jamais interprétées comme du HTML) ; redirigée vers un fichier ou un tube, ou dans une console Windows sans séquences ANSI, elle reste en texte brut.
   Le rendu tient compte de la largeur du terminal et aligne les lignes suivantes sous le préfixe `iacli>`.
   Les diffs proposés avant une écriture sont colorés de la même façon (lignes ajoutées et supprimées).
 - Un indicateur animé avec la durée écoulée (uniquement dans un terminal interactif ; sur `stderr`), le nom des outils
