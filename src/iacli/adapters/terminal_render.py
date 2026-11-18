@@ -3,6 +3,7 @@
 import shutil
 from io import StringIO
 
+from markdown_it import MarkdownIt
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.syntax import Syntax
@@ -24,12 +25,22 @@ def _console(buffer: StringIO, margin: int = 0) -> Console:
     return Console(file=buffer, force_terminal=True, width=width)
 
 
+class _TextMarkdown(Markdown):
+    """Markdown où le HTML est du texte : `List<String>` ou `<div>` s'affichent tels que le
+    modèle les a écrits au lieu d'être avalés comme des balises."""
+
+    def __init__(self, markup: str) -> None:
+        super().__init__(markup)
+        parser = MarkdownIt("commonmark", {"html": False})
+        self.parsed = parser.enable("strikethrough").enable("table").parse(markup)
+
+
 def render_markdown(text: str, margin: int = 0) -> str:
     """Convertit du markdown en texte avec séquences ANSI (couleurs, gras, blocs de code).
 
     `margin` est le nombre de colonnes déjà occupées à gauche (préfixe, retrait)."""
     buffer = StringIO()
-    _console(buffer, margin).print(Markdown(text))
+    _console(buffer, margin).print(_TextMarkdown(text))
     return buffer.getvalue().rstrip("\n")
 
 
