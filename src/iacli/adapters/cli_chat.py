@@ -13,6 +13,9 @@ from iacli.domain.status import PromptStatus
 
 # Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
 RESPONSE_PREFIX = "iacli> "
+# Colonnes réservées au rendu markdown : le préfixe, plus une colonne libre (écrire dans la
+# dernière colonne provoque, dans certains terminaux, un retour à la ligne en trop).
+RESPONSE_MARGIN = len(RESPONSE_PREFIX) + 1
 
 
 class CliChatPresenter:

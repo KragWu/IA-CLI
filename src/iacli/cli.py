@@ -6,7 +6,7 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from iacli.adapters.cli_chat import RESPONSE_PREFIX, CliChatPresenter
+from iacli.adapters.cli_chat import RESPONSE_MARGIN, CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter
 from iacli.adapters.terminal_input import create_prompt_input
 from iacli.adapters.terminal_render import (
@@ -142,9 +142,7 @@ def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
     presenter = CliChatPresenter(
         prompt_fn=prompt_fn,
         render_markdown=(
-            partial(render_markdown, margin=len(RESPONSE_PREFIX))
-            if ansi_output
-            else None
+            partial(render_markdown, margin=RESPONSE_MARGIN) if ansi_output else None
         ),
         render_diff=render_diff if ansi_output else None,
     )
