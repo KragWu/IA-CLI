@@ -22,10 +22,6 @@ COMMANDS = (
 _COMMAND_WORD = re.compile(r"/[a-z][a-z0-9_-]*", re.IGNORECASE)
 
 
-def command_names() -> list[str]:
-    return [command.name for command in COMMANDS]
-
-
 def _first_word(text: str) -> str:
     words = text.split(maxsplit=1)
     return words[0] if words else ""

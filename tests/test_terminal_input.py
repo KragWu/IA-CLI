@@ -14,7 +14,7 @@ from iacli.adapters.terminal_input import (
     render_toolbar,
     resolve_enter,
 )
-from iacli.domain.commands import COMMANDS, command_names
+from iacli.domain.commands import COMMANDS
 
 
 def _completions(text):
@@ -24,7 +24,7 @@ def _completions(text):
 
 
 def test_slash_alone_proposes_every_registered_command():
-    assert [c.text for c in _completions("/")] == command_names()
+    assert [c.text for c in _completions("/")] == [command.name for command in COMMANDS]
 
 
 def test_completion_narrows_down_to_the_matching_commands():

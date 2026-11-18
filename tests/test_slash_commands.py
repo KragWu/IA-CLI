@@ -4,7 +4,6 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.domain.commands import (
     COMMANDS,
-    command_names,
     find_command,
     is_command_input,
 )
@@ -32,7 +31,13 @@ def _run(tmp_path, prompts, model=None, context_limit=None):
 
 
 def test_registry_lists_the_available_commands():
-    assert command_names() == ["/help", "/clear", "/context", "/exit", "/quit"]
+    assert [command.name for command in COMMANDS] == [
+        "/help",
+        "/clear",
+        "/context",
+        "/exit",
+        "/quit",
+    ]
     assert all(command.description for command in COMMANDS)
 
 
