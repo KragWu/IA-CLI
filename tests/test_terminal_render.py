@@ -2,6 +2,7 @@ import os
 from functools import partial
 from io import StringIO
 
+from markdown_it import MarkdownIt
 from rich.console import Console
 from rich.text import Text
 
@@ -226,3 +227,18 @@ def test_ansi_output_is_refused_on_a_dumb_terminal(monkeypatch):
     console = Console(file=StringIO(), force_terminal=True, legacy_windows=False)
 
     assert supports_ansi(console) is False
+
+
+def test_the_response_is_parsed_only_once(monkeypatch):
+    parsed = []
+    real_parse = MarkdownIt.parse
+
+    def spy(self, src, env=None):
+        parsed.append(src)
+        return real_parse(self, src, env)
+
+    monkeypatch.setattr(MarkdownIt, "parse", spy)
+
+    render_markdown("**gras** et List<String>")
+
+    assert parsed.count("**gras** et List<String>") == 1
