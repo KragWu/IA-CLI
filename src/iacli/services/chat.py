@@ -82,7 +82,9 @@ class ChatSession:
                 "modèle", elapsed
             ),
         )
-        # Historique conservé en mémoire pour toute la session (jamais écrit sur disque).
+        # Historique de la conversation conservé en mémoire pour toute la session ; la session ne
+        # l'écrit jamais sur disque. (Seule la saisie de l'utilisateur peut l'être, par l'adapter
+        # d'entrée et si `[chat] save_history` est activé : ce n'est pas l'historique du modèle.)
         self._initial_messages: list[BaseMessage] = [
             SystemMessage(
                 content=(
