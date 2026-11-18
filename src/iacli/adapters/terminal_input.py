@@ -97,6 +97,12 @@ def _split_first_word(line: str) -> tuple[str, str]:
     return line[: leading + end], line[leading + end :]
 
 
+def continuation_prompt(width: int, line_number: int, wrap_count: int) -> str:
+    """Marge des lignes suivantes d'un message : des points, sur la largeur du prompt, pour que
+    le texte reste aligné sous celui de la première ligne."""
+    return "... ".ljust(width)[:width]
+
+
 def render_toolbar(status: PromptStatus) -> StyleAndTextTuples:
     """Barre d'état : modèle et, une fois mesurée, occupation du contexte (colorée par niveau)."""
     tokens: StyleAndTextTuples = [("", f" modèle {status.model} ")]
@@ -206,7 +212,7 @@ def create_prompt_input(
         multiline=True,
         # Complétion à la demande (Tab) : pendant la frappe, elle empêche Tab d'insérer.
         complete_while_typing=False,
-        prompt_continuation="... ",
+        prompt_continuation=continuation_prompt,
         bottom_toolbar=lambda: render_toolbar(status()),
         style=STYLE,
         **session_options,

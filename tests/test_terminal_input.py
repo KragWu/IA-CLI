@@ -10,6 +10,7 @@ from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.terminal_input import (
     SlashCommandCompleter,
     SlashCommandLexer,
+    continuation_prompt,
     create_prompt_input,
     render_toolbar,
     resolve_enter,
@@ -216,3 +217,16 @@ def test_resolve_enter_pairs_the_trailing_backslashes(backslashes, kept, submit)
     assert sent is submit
     expected = "abc" + backslash * kept + ("" if submit else chr(10))
     assert text == expected
+
+
+@pytest.mark.parametrize("width", [6, 10, 4])
+def test_continuation_lines_are_as_wide_as_the_prompt(width):
+    assert len(continuation_prompt(width, 1, 0)) == width
+
+
+def test_continuation_lines_start_with_dots_so_the_text_stays_aligned():
+    assert continuation_prompt(6, 1, 0) == "...   "
+
+
+def test_continuation_never_exceeds_a_very_narrow_prompt():
+    assert continuation_prompt(2, 1, 0) == ".."
