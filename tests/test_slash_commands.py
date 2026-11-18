@@ -121,3 +121,31 @@ def test_a_known_command_accepts_trailing_text(tmp_path):
 )
 def test_is_command_input_needs_a_known_command_or_a_lone_word(text, expected):
     assert is_command_input(text) is expected
+
+
+def test_clear_also_resets_the_context_shown_in_the_status_bar(tmp_path):
+    usage = {"input_tokens": 400, "output_tokens": 100, "total_tokens": 500}
+    model = FakeChatModel([AIMessage(content="ok", usage_metadata=usage)])
+    prompts = iter(["bonjour", "/clear", "/exit"])
+    statuses = []
+
+    class RecordingPresenter(CliChatPresenter):
+        def prompt(self):
+            statuses.append(self.prompt_status())
+            return super().prompt()
+
+    presenter = RecordingPresenter(
+        input_fn=lambda _prompt: next(prompts), output_fn=lambda _line: None
+    )
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=presenter,
+        tools_factory=create_workspace_tools,
+        context_limit=1000,
+    )
+
+    # Invites successives : avant le tour, après le tour, après /clear.
+    assert [status.context_used for status in statuses] == [None, 500, None]

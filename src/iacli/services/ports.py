@@ -112,6 +112,10 @@ class ChatPresenter(Protocol):
 
     def show_context_warning(self, used: int, limit: int) -> None: ...
 
+    def clear_context_usage(self) -> None:
+        """Oublie l'occupation du contexte affichée (l'historique vient d'être effacé)."""
+        ...
+
     def start_progress(self) -> None:
         """Démarre l'indicateur de traitement d'un tour."""
         ...

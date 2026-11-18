@@ -151,6 +151,7 @@ class ChatSession:
         elif command.name == "/clear":
             self._messages = list(self._initial_messages)
             self._last_context_tokens = None
+            presenter.clear_context_usage()
             presenter.show_notice("Historique effacé")
         elif command.name == "/context":
             if self._context_limit is None or self._last_context_tokens is None:
