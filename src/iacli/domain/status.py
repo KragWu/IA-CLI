@@ -10,3 +10,8 @@ class PromptStatus:
     model: str
     context_used: int | None
     context_limit: int | None
+
+
+def format_tokens(count: int) -> str:
+    """Nombre de tokens lisible, milliers séparés par une espace (`18 000`)."""
+    return f"{count:,}".replace(",", " ")
