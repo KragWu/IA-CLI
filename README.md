@@ -79,6 +79,7 @@ Dans un terminal interactif, l'invite `vous>` offre :
 
 - **Entrée** envoie le message ; une `\` en fin de ligne, **Ctrl+J** ou **Alt+Entrée** passent à la ligne suivante (un
   texte collé garde ses retours à la ligne) ;
+  pour envoyer un message qui finit par `\` (chemin Windows), doublez-la : `\\` en fin de ligne envoie un seul `\` ;
 - **Tab** complète les slash-commands (`/` puis Tab liste toutes les commandes) ;
 - la **coloration** du premier mot : cyan pour une commande connue, rouge pour une commande inconnue ;
 - l'**historique** (flèches haut et bas) pour la session en cours ; il n'est écrit dans `history` à côté de `config.toml` que
