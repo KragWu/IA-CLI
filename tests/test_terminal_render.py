@@ -219,3 +219,10 @@ def test_markdown_formatting_still_works_next_to_angle_brackets():
 
     assert "**" not in rendered
     assert "List<String>" in _plain(rendered)
+
+
+def test_ansi_output_is_refused_on_a_dumb_terminal(monkeypatch):
+    monkeypatch.setenv("TERM", "dumb")
+    console = Console(file=StringIO(), force_terminal=True, legacy_windows=False)
+
+    assert supports_ansi(console) is False

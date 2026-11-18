@@ -127,8 +127,7 @@ def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
     """Presenter du chat : rendu riche et saisie avancée seulement dans un terminal interactif.
 
     Redirigé (tube, fichier, tests), il garde `input` et un affichage en texte brut."""
-    interactive_output = sys.stdout.isatty()
-    ansi_output = interactive_output and supports_ansi()
+    ansi_output = sys.stdout.isatty() and supports_ansi()
     presenter: CliChatPresenter
 
     def status() -> PromptStatus:
@@ -136,7 +135,7 @@ def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
 
     prompt_fn = (
         create_prompt_input(COMMANDS, history_path, status)
-        if interactive_output and sys.stdin.isatty()
+        if ansi_output and sys.stdin.isatty()
         else None
     )
     presenter = CliChatPresenter(

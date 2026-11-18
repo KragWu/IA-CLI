@@ -131,6 +131,7 @@ def test_the_chat_presenter_gets_no_history_path_when_none_is_given(monkeypatch)
 
     monkeypatch.setattr(cli.sys, "stdin", Tty())
     monkeypatch.setattr(cli.sys, "stdout", Tty())
+    monkeypatch.setattr(cli, "supports_ansi", lambda: True)
     monkeypatch.setattr(cli, "create_prompt_input", fake_create_prompt_input)
 
     cli.create_chat_presenter(None)
