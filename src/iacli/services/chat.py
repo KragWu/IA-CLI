@@ -198,12 +198,16 @@ class ChatSession:
             self._cancel_requested,
         )
         self._messages = outcome.messages
-        if outcome.context_tokens is not None:
-            self._last_context_tokens = outcome.context_tokens
+        # Un tour annulé ne rapporte aucune mesure : elle vient d'un appel interrompu, pour un
+        # historique qui vient d'être remis à l'état d'avant le tour. Un tour en erreur garde la
+        # sienne : elle dit ce que le dernier appel a consommé (et déclenche l'alerte de
+        # contexte, utile quand l'erreur vient d'un dépassement de `num_ctx`).
+        measure = None if outcome.cancelled else outcome.context_tokens
+        if measure is not None:
+            self._last_context_tokens = measure
         elif not outcome.cancelled and outcome.error is None:
             # Le tour a réussi mais Ollama n'a rien mesuré : l'historique a grandi, l'ancien
-            # chiffre sous-estimerait le contexte. (Un tour échoué ou annulé est retiré de
-            # l'historique, donc la dernière mesure reste exacte.)
+            # chiffre sous-estimerait le contexte.
             self._last_context_tokens = None
             presenter.clear_context_usage()
         if outcome.cancelled:
@@ -213,10 +217,10 @@ class ChatSession:
         else:
             presenter.show_response(outcome.response)
         limit = self._context_limit
-        if limit is not None and outcome.context_tokens is not None:
-            presenter.show_context_usage(outcome.context_tokens, limit)
-            if outcome.context_tokens >= limit * CONTEXT_WARNING_RATIO:
-                presenter.show_context_warning(outcome.context_tokens, limit)
+        if limit is not None and measure is not None:
+            presenter.show_context_usage(measure, limit)
+            if measure >= limit * CONTEXT_WARNING_RATIO:
+                presenter.show_context_warning(measure, limit)
 
 
 def run_chat(
