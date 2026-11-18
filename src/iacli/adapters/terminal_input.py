@@ -18,7 +18,7 @@ from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.styles import Style
 
-from iacli.domain.commands import SlashCommand, find_command, is_command_input
+from iacli.domain.commands import InputKind, SlashCommand, parse_input
 from iacli.domain.status import PromptStatus
 
 # Part de la fenêtre de contexte à partir de laquelle la barre d'état passe à l'orange / au rouge.
@@ -60,22 +60,25 @@ class SlashCommandCompleter(Completer):
 
 
 class SlashCommandLexer(Lexer):
-    """Colore le premier mot de la première ligne s'il a la forme d'une commande."""
+    """Colore le premier mot de la saisie quand le service le traiterait comme une commande.
 
-    def __init__(self, commands: Sequence[SlashCommand]) -> None:
-        self._commands = commands
+    Cyan pour une commande valide ; rouge pour un mot inconnu ou une commande suivie de
+    texte, que le service refuse. Le jugement porte sur le texte entier, comme à l'envoi."""
 
     def lex_document(self, document: Document) -> Callable[[int], StyleAndTextTuples]:
         lines = document.lines
+        parsed = parse_input(document.text)
 
         def lex_line(line_number: int) -> StyleAndTextTuples:
             line = lines[line_number]
-            if line_number != 0 or not is_command_input(line):
+            if line_number != 0 or parsed.kind is InputKind.MESSAGE:
                 return [("", line)]
             word, rest = _split_first_word(line)
+            if not word.strip():
+                return [("", line)]
             style = (
                 "class:command"
-                if find_command(word) is not None
+                if parsed.kind is InputKind.COMMAND
                 else "class:unknown-command"
             )
             tokens: StyleAndTextTuples = [(style, word)]
@@ -188,7 +191,7 @@ def create_prompt_input(
     session: PromptSession[str] = PromptSession(
         history=_create_history(history_path),
         completer=SlashCommandCompleter(commands),
-        lexer=SlashCommandLexer(commands),
+        lexer=SlashCommandLexer(),
         key_bindings=_key_bindings(),
         multiline=True,
         # Complétion à la demande (Tab) : pendant la frappe, elle empêche Tab d'insérer.

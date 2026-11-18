@@ -14,7 +14,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from iacli.domain.commands import COMMANDS, find_command, is_command_input
+from iacli.domain.commands import COMMANDS, InputKind, SlashCommand, parse_input
 from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
 from iacli.services.tool_call_parser import is_tool_call_feedback
@@ -131,22 +131,30 @@ class ChatSession:
         user_input = user_input.strip()
         if not user_input:
             return True
-        if is_command_input(user_input):
-            return self._handle_command(user_input)
-        self._run_turn(user_input)
-        return True
-
-    def _handle_command(self, user_input: str) -> bool:
-        presenter = self._presenter
-        command = find_command(user_input)
+        parsed = parse_input(user_input)
+        if parsed.kind is InputKind.MESSAGE:
+            self._run_turn(user_input)
+            return True
+        command = parsed.command
         if command is None:
-            presenter.show_error(
-                f"Commande inconnue : {user_input.split()[0]}. "
+            self._presenter.show_error(
+                f"Commande inconnue : {parsed.word}. "
                 "Tapez /help pour la liste des commandes."
             )
-        elif command.name in {"/exit", "/quit"}:
+            return True
+        if parsed.kind is InputKind.COMMAND_WITH_ARGUMENTS:
+            self._presenter.show_error(
+                f"La commande {command.name} n'accepte pas d'argument : "
+                "le reste de la saisie n'a pas été envoyé."
+            )
+            return True
+        return self._handle_command(command)
+
+    def _handle_command(self, command: SlashCommand) -> bool:
+        presenter = self._presenter
+        if command.name in {"/exit", "/quit"}:
             return False
-        elif command.name == "/help":
+        if command.name == "/help":
             presenter.show_help(COMMANDS)
         elif command.name == "/clear":
             self._messages = list(self._initial_messages)
