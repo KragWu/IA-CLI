@@ -211,3 +211,63 @@ def test_a_command_is_still_recognised_around_whitespace(tmp_path):
     assert session.handle("  /exit  ") is False
     assert session.handle("\n/help\n") is True
     assert "Commandes disponibles :" in output
+
+
+def test_a_cancel_requested_while_the_input_is_being_parsed_is_not_lost(
+    tmp_path, monkeypatch
+):
+    from iacli.services import chat as chat_module
+
+    holder = {}
+    real_parse_input = chat_module.parse_input
+
+    def parse_then_cancel(text):
+        holder["session"].cancel()
+        return real_parse_input(text)
+
+    monkeypatch.setattr(chat_module, "parse_input", parse_then_cancel)
+    model = FakeChatModel()
+    session, output = _session(tmp_path, model)
+    holder["session"] = session
+
+    session.handle("demande")
+
+    assert "Génération annulée" in output
+    assert not any("Réponse" in line for line in output)
+
+
+def test_a_cancel_after_a_finished_message_does_not_affect_the_next_one(tmp_path):
+    session, output = _session(tmp_path)
+
+    session.handle("premier")
+    session.cancel()
+    session.handle("second")
+
+    assert "Génération annulée" not in output
+    assert any("Réponse 2" in line for line in output)
+
+
+def test_a_cancel_during_a_command_does_not_affect_the_next_message(tmp_path):
+    holder = {}
+
+    class CancellingPresenter(CliChatPresenter):
+        def show_help(self, commands):
+            holder["session"].cancel()
+            super().show_help(commands)
+
+    output = []
+    session = ChatSession(
+        FakeChatModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=CancellingPresenter(input_fn=_no_prompt, output_fn=output.append),
+        tools_factory=create_workspace_tools,
+    )
+    holder["session"] = session
+
+    session.handle("/help")
+    session.handle("bonjour")
+
+    assert "Génération annulée" not in output
+    assert any("Réponse 1" in line for line in output)
