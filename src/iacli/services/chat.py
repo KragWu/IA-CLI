@@ -225,6 +225,16 @@ def run_chat(
             return
 
 
+def _is_complete_answer(state: AgentState) -> bool:
+    """True quand le modèle vient de produire sa réponse finale : plus d'appel d'outil à
+    exécuter, aucun appel illisible à corriger. Annuler à ce stade jetterait un travail
+    terminé, alors qu'il ne reste qu'à vérifier la réponse."""
+    if state.get("error") or state.get("malformed_streak"):
+        return False
+    last_message = state["messages"][-1]
+    return isinstance(last_message, AIMessage) and not last_message.tool_calls
+
+
 class _TurnCancelled(Exception):
     """Annulation demandée par `ChatSession.cancel` (équivalent d'un Ctrl+C)."""
 
@@ -275,7 +285,7 @@ def _run_turn(
                     will_retry=not state.get("error"),
                 )
                 seen_messages = max(seen_messages, len(last_messages))
-                if cancel_requested.is_set():
+                if cancel_requested.is_set() and not _is_complete_answer(state):
                     raise _TurnCancelled
         finally:
             chat_presenter.stop_progress()
