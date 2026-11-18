@@ -11,6 +11,9 @@ from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
 
+# Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
+RESPONSE_PREFIX = "iacli> "
+
 
 @dataclass(frozen=True)
 class PromptStatus:
@@ -79,8 +82,10 @@ class CliChatPresenter:
 
     def show_response(self, response: str) -> None:
         if self._render_markdown is not None:
-            response = self._render_markdown(response)
-        self._emit(f"\niacli> {response}\n")
+            # Les lignes suivantes s'alignent sous le texte, après le préfixe.
+            indent = " " * len(RESPONSE_PREFIX)
+            response = self._render_markdown(response).replace("\n", "\n" + indent)
+        self._emit(f"\n{RESPONSE_PREFIX}{response}\n")
 
     def show_error(self, message: str) -> None:
         self._emit(f"erreur> {message}")

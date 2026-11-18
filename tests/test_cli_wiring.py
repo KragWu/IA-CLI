@@ -2,7 +2,7 @@ import io
 import sys
 
 from iacli import cli
-from iacli.adapters.cli_chat import PromptStatus
+from iacli.adapters.cli_chat import RESPONSE_PREFIX, PromptStatus
 from iacli.domain.commands import COMMANDS
 
 
@@ -46,9 +46,34 @@ def test_presenter_renders_markdown_only_in_an_interactive_terminal(
 ):
     plain = cli.create_chat_presenter(tmp_path / "history")
     monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "supports_ansi", lambda: True)
     monkeypatch.setattr(cli, "create_prompt_input", lambda *args, **kwargs: input)
     monkeypatch.setattr(sys, "stdin", _Tty())
     rich = cli.create_chat_presenter(tmp_path / "history")
 
     assert plain._render_markdown is None
     assert rich._render_markdown is not None
+    assert rich._render_diff is not None
+
+
+def test_presenter_stays_plain_on_a_terminal_without_ansi_support(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "supports_ansi", lambda: False)
+
+    presenter = cli.create_chat_presenter(tmp_path / "history")
+
+    assert presenter._render_markdown is None
+    assert presenter._render_diff is None
+
+
+def test_the_markdown_renderer_leaves_room_for_the_response_prefix(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "supports_ansi", lambda: True)
+
+    presenter = cli.create_chat_presenter(tmp_path / "history")
+
+    assert presenter._render_markdown.keywords == {"margin": len(RESPONSE_PREFIX)}

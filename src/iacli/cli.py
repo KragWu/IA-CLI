@@ -6,10 +6,14 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from iacli.adapters.cli_chat import CliChatPresenter, PromptStatus
+from iacli.adapters.cli_chat import RESPONSE_PREFIX, CliChatPresenter, PromptStatus
 from iacli.adapters.cli_presenter import CliPresenter
 from iacli.adapters.terminal_input import create_prompt_input
-from iacli.adapters.terminal_render import render_diff, render_markdown
+from iacli.adapters.terminal_render import (
+    render_diff,
+    render_markdown,
+    supports_ansi,
+)
 from iacli.domain.commands import COMMANDS
 from iacli.domain.config import OllamaSettings, resolve_newline
 from iacli.infrastructure.configuration import FileConfigurationGateway
@@ -123,6 +127,7 @@ def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
 
     Redirigé (tube, fichier, tests), il garde `input` et un affichage en texte brut."""
     interactive_output = sys.stdout.isatty()
+    ansi_output = interactive_output and supports_ansi()
     presenter: CliChatPresenter
 
     def status() -> PromptStatus:
@@ -135,8 +140,12 @@ def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
     )
     presenter = CliChatPresenter(
         prompt_fn=prompt_fn,
-        render_markdown=render_markdown if interactive_output else None,
-        render_diff=render_diff if interactive_output else None,
+        render_markdown=(
+            partial(render_markdown, margin=len(RESPONSE_PREFIX))
+            if ansi_output
+            else None
+        ),
+        render_diff=render_diff if ansi_output else None,
     )
     return presenter
 
