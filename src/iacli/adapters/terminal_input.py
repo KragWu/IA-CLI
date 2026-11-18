@@ -61,7 +61,8 @@ class SlashCommandCompleter(Completer):
 
 
 class SlashCommandLexer(Lexer):
-    """Colore le premier mot de la saisie quand le service le traiterait comme une commande.
+    """Colore le premier mot de la saisie (première ligne non vide) quand le service le traiterait
+    comme une commande.
 
     Cyan pour une commande valide ; rouge pour un mot inconnu ou une commande suivie de
     texte, que le service refuse. Le jugement porte sur le texte entier, comme à l'envoi."""
@@ -69,14 +70,14 @@ class SlashCommandLexer(Lexer):
     def lex_document(self, document: Document) -> Callable[[int], StyleAndTextTuples]:
         lines = document.lines
         parsed = parse_input(document.text)
+        # Le service analyse le premier mot du texte : celui de la première ligne non vide.
+        first_line = next((i for i, line in enumerate(lines) if line.strip()), -1)
 
         def lex_line(line_number: int) -> StyleAndTextTuples:
             line = lines[line_number]
-            if line_number != 0 or parsed.kind is InputKind.MESSAGE:
+            if line_number != first_line or parsed.kind is InputKind.MESSAGE:
                 return [("", line)]
             word, rest = _split_first_word(line)
-            if not word.strip():
-                return [("", line)]
             style = (
                 "class:command"
                 if parsed.kind is InputKind.COMMAND
