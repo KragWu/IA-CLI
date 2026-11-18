@@ -230,3 +230,21 @@ def test_continuation_lines_start_with_dots_so_the_text_stays_aligned():
 
 def test_continuation_never_exceeds_a_very_narrow_prompt():
     assert continuation_prompt(2, 1, 0) == ".."
+
+
+def _styles_of_line(text, line_number):
+    return SlashCommandLexer().lex_document(Document(text))(line_number)
+
+
+def test_the_command_is_highlighted_on_its_line_even_after_blank_lines():
+    newline = chr(10)
+
+    assert _styles_of_line(newline + "/exit", 1) == [("class:command", "/exit")]
+    assert _styles_of_line(newline + "/foo", 1) == [("class:unknown-command", "/foo")]
+    assert _styles_of_line("  " + newline + "/help", 1) == [("class:command", "/help")]
+
+
+def test_blank_lines_before_the_command_stay_unstyled():
+    newline = chr(10)
+
+    assert _styles_of_line(newline + "/exit", 0) == [("", "")]
