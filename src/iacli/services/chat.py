@@ -128,12 +128,11 @@ class ChatSession:
 
     def handle(self, user_input: str) -> bool:
         """Traite une saisie (message ou slash-command) ; False quand la session doit se terminer."""
-        # Seule la détection (saisie vide, commande) ignore les blancs : un message part tel quel.
         if not user_input.strip():
             return True
         parsed = parse_input(user_input)
         if parsed.kind is InputKind.MESSAGE:
-            self._run_turn(user_input)
+            self._run_turn(_clean_message(user_input))
             return True
         command = parsed.command
         if command is None:
@@ -247,6 +246,15 @@ def _is_complete_answer(state: AgentState) -> bool:
         return False
     last_message = state["messages"][-1]
     return isinstance(last_message, AIMessage) and not last_message.tool_calls
+
+
+def _clean_message(text: str) -> str:
+    """Retire les lignes vides du début et les blancs de la fin d'un message, sans toucher à
+    l'indentation de sa première ligne (un bloc de code ou du YAML collé doit rester aligné)."""
+    lines = text.splitlines(keepends=True)
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    return "".join(lines).rstrip()
 
 
 class _TurnCancelled(Exception):

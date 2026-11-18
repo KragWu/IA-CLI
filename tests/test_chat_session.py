@@ -1,5 +1,6 @@
 import threading
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from iacli.adapters.cli_chat import CliChatPresenter
@@ -174,12 +175,34 @@ def test_cancel_still_stops_a_turn_that_is_retrying_an_unreadable_tool_call(tmp_
 def test_the_message_sent_to_the_model_keeps_its_indentation(tmp_path):
     model = FakeChatModel()
     session, _ = _session(tmp_path, model)
-    snippet = "    def f():\n        return 1\n"
+    snippet = "    def f():\n        return 1"
 
     session.handle(snippet)
 
     (sent,) = [m for m in model.calls[0] if isinstance(m, HumanMessage)]
     assert sent.content == snippet
+
+
+@pytest.mark.parametrize(
+    ("typed", "sent"),
+    [
+        ("question\n", "question"),
+        ("question  \n\n", "question"),
+        ("\n  \n    def f():\n        pass\n\n", "    def f():\n        pass"),
+        ("un\n\ndeux", "un\n\ndeux"),
+        ("  indenté", "  indenté"),
+    ],
+)
+def test_only_surrounding_blank_lines_and_trailing_spaces_are_removed(
+    tmp_path, typed, sent
+):
+    model = FakeChatModel()
+    session, _ = _session(tmp_path, model)
+
+    session.handle(typed)
+
+    (message,) = [m for m in model.calls[0] if isinstance(m, HumanMessage)]
+    assert message.content == sent
 
 
 def test_a_command_is_still_recognised_around_whitespace(tmp_path):
