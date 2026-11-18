@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 from time import perf_counter
 from typing import Any
 
@@ -114,6 +114,10 @@ class ChatSession:
         self._messages = list(self._initial_messages)
         self._last_context_tokens: int | None = None
         self._cancel_requested = Event()
+        # `_handling` : une saisie est en cours de traitement. Il évite de perdre une annulation
+        # demandée juste après `handle` (autre thread) et d'en garder une venue hors traitement.
+        self._state_lock = Lock()
+        self._handling = False
 
     def start(self) -> None:
         """Affiche l'en-tête de la conversation."""
@@ -122,12 +126,25 @@ class ChatSession:
     def cancel(self) -> None:
         """Demande l'arrêt du tour en cours, à la prochaine étape du graphe.
 
-        Utilisable depuis n'importe quel thread ; sans effet si aucun tour n'est en cours.
-        Un appel déjà lancé (modèle, commande shell) n'est pas interrompu de force."""
-        self._cancel_requested.set()
+        Utilisable depuis n'importe quel thread ; sans effet quand aucune saisie n'est en cours
+        de traitement (`handle`). Un appel déjà lancé (modèle, commande shell) n'est pas
+        interrompu de force."""
+        with self._state_lock:
+            if self._handling:
+                self._cancel_requested.set()
 
     def handle(self, user_input: str) -> bool:
         """Traite une saisie (message ou slash-command) ; False quand la session doit se terminer."""
+        with self._state_lock:
+            self._handling = True
+            self._cancel_requested.clear()
+        try:
+            return self._dispatch(user_input)
+        finally:
+            with self._state_lock:
+                self._handling = False
+
+    def _dispatch(self, user_input: str) -> bool:
         if not user_input.strip():
             return True
         parsed = parse_input(user_input)
@@ -171,8 +188,6 @@ class ChatSession:
 
     def _run_turn(self, user_input: str) -> None:
         presenter = self._presenter
-        # Une annulation demandée hors tour ne doit pas couper le tour suivant.
-        self._cancel_requested.clear()
         presenter.start_progress()
         outcome = _run_turn(
             self._graph,

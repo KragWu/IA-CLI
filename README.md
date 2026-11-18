@@ -375,7 +375,7 @@ cli.py (composition) ─► adapters ───────┐
    chaque demande est un « tour » exécuté par le graphe.
 
 La session ne lit jamais la saisie : on lui transmet chaque message avec `handle(saisie)` (qui renvoie `False` sur
-`/exit` ou `/quit`) et on peut l'interrompre depuis un autre thread avec `cancel()`, à la prochaine étape du graphe (une réponse déjà terminée n'est pas jetée). La
+`/exit` ou `/quit`) et on peut l'interrompre depuis un autre thread avec `cancel()` (sans effet quand aucune saisie n'est en cours de traitement), à la prochaine étape du graphe (une réponse déjà terminée n'est pas jetée). La
 boucle console n'est donc qu'un pilote parmi d'autres possibles (par exemple une interface pilotée par événements).
 
 ### Graphe agent/outils
