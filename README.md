@@ -92,7 +92,8 @@ Redirigée (tube, fichier), la saisie se limite à une ligne lue sur l'entrée s
 
 - `/exit` ou `/quit` (insensible à la casse) ferme la conversation.
 - `/help` liste les commandes ; `/clear` efface l'historique (les instructions sont conservées) ; `/context` rappelle
-  l'occupation du contexte au dernier tour. Les commandes n'ont pas d'argument : une commande connue suivie de texte (`/clear et une question`, même sur une autre
+  l'occupation du contexte au dernier tour mesuré (après un tour réussi sans mesure d'Ollama, la barre d'état et `/context`
+  l'oublient plutôt que d'afficher un chiffre périmé). Les commandes n'ont pas d'argument : une commande connue suivie de texte (`/clear et une question`, même sur une autre
   ligne) est refusée avec une erreur, et rien n'est exécuté ni envoyé, pour ne jamais perdre une saisie en silence. Un mot
   de la forme `/nom` inconnu, **seul**, est aussi une erreur ; suivi de texte (`/tmp contient quoi ?`) ou sous forme de
   chemin (`/etc/hosts`), c'est un message normal. La coloration de la saisie suit la même règle (rouge = refusé).
