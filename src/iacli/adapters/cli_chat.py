@@ -116,6 +116,9 @@ class CliChatPresenter:
             f"tokens ({round(100 * used / limit)} %)"
         )
 
+    def clear_context_usage(self) -> None:
+        self._context = None
+
     def show_context_warning(self, used: int, limit: int) -> None:
         self._emit(
             f"attention> contexte utilisé à {round(100 * used / limit)} % : au-delà de "
