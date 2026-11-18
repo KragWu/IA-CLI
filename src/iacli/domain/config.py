@@ -23,6 +23,14 @@ class FileSettings:
     end_of_line: EndOfLine = EndOfLine.AUTO
 
 
+@dataclass(frozen=True, slots=True)
+class ChatSettings:
+    """Réglages du chat issus de `config.toml` (section `[chat]`)."""
+
+    # Enregistrer les messages saisis dans le fichier `history` du dossier de configuration.
+    save_history: bool = False
+
+
 def resolve_newline(setting: EndOfLine, platform_newline: str) -> str:
     """Fin de ligne effective (`\\n` ou `\\r\\n`) pour un réglage.
 
@@ -56,3 +64,4 @@ class ConfigurationState:
     ollama: OllamaSettings
     warnings: tuple[str, ...] = ()
     files: FileSettings = field(default_factory=FileSettings)
+    chat: ChatSettings = field(default_factory=ChatSettings)

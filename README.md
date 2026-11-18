@@ -81,7 +81,8 @@ Dans un terminal interactif, l'invite `vous>` offre :
   texte collé garde ses retours à la ligne) ;
 - **Tab** complète les slash-commands (`/` puis Tab liste toutes les commandes) ;
 - la **coloration** du premier mot : cyan pour une commande connue, rouge pour une commande inconnue ;
-- l'**historique** (flèches haut et bas), conservé dans `history` à côté de `config.toml` ;
+- l'**historique** (flèches haut et bas) pour la session en cours ; il n'est écrit dans `history` à côté de `config.toml` que
+  si `save_history = true` dans la section `[chat]` ;
 - une **barre d'état** avec le modèle et l'occupation du contexte (vert, orange puis rouge à partir de 60 % et 80 %).
 
 Redirigée (tube, fichier), la saisie se limite à une ligne lue sur l'entrée standard et l'affichage reste en texte brut.
@@ -208,6 +209,9 @@ num_ctx = 18000
 
 [files]
 end_of_line = "auto"
+
+[chat]
+save_history = false
 ```
 
 | Clé            | Rôle                                                                                           |
@@ -217,6 +221,7 @@ end_of_line = "auto"
 | `model`        | Modèle utilisé par le chat (doit gérer les outils).                                            |
 | `num_ctx`      | Fenêtre de contexte demandée à Ollama, en tokens (entier strictement positif).                 |
 | `end_of_line`  | Section `[files]` : fin de ligne des **nouveaux** fichiers, `"auto"` (celle du système : CRLF sous Windows, LF ailleurs), `"lf"` ou `"crlf"`. |
+| `save_history` | Section `[chat]` : enregistre les messages saisis, **en clair**, dans le fichier `history` du dossier de configuration (flèches haut et bas entre deux sessions). `false` par défaut : un secret collé dans le chat resterait sur le disque. |
 
 - **Fins de ligne** : un fichier existant garde toujours sa fin de ligne la plus fréquente, quel que soit le réglage ou
   le système. `end_of_line` ne s'applique qu'aux nouveaux fichiers, et aux fichiers existants qui ne permettent pas de

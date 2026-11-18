@@ -102,7 +102,11 @@ def handle_chat(args: argparse.Namespace) -> None:
         Path.cwd().resolve(),
         instructions,
         model_name,
-        presenter=create_chat_presenter(configuration.directory / "history"),
+        presenter=create_chat_presenter(
+            configuration.directory / "history"
+            if configuration.chat.save_history
+            else None
+        ),
         # Fin de ligne des nouveaux fichiers : réglage `[files] end_of_line`, sinon l'OS.
         tools_factory=partial(
             create_workspace_tools,
@@ -114,7 +118,7 @@ def handle_chat(args: argparse.Namespace) -> None:
     )
 
 
-def create_chat_presenter(history_path: Path) -> CliChatPresenter:
+def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
     """Presenter du chat : rendu riche et saisie avancée seulement dans un terminal interactif.
 
     Redirigé (tube, fichier, tests), il garde `input` et un affichage en texte brut."""
