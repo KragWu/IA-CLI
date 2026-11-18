@@ -32,6 +32,7 @@ def test_presenter_uses_the_rich_prompt_in_an_interactive_terminal(
     monkeypatch.setattr(sys, "stdin", _Tty())
     monkeypatch.setattr(sys, "stdout", _Tty())
     monkeypatch.setattr(cli, "create_prompt_input", fake_create_prompt_input)
+    monkeypatch.setattr(cli, "supports_ansi", lambda: True)
 
     presenter = cli.create_chat_presenter(tmp_path / "history")
 
@@ -78,3 +79,19 @@ def test_the_markdown_renderer_leaves_room_for_the_response_prefix(
     presenter = cli.create_chat_presenter(tmp_path / "history")
 
     assert presenter._render_markdown.keywords == {"margin": RESPONSE_MARGIN}
+
+
+def test_the_plain_prompt_is_kept_when_the_terminal_has_no_ansi_support(
+    monkeypatch, tmp_path
+):
+    def refuse(*args, **kwargs):
+        raise AssertionError("la saisie avancée ne doit pas être créée")
+
+    monkeypatch.setattr(sys, "stdin", _Tty("ligne lue\n"))
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "supports_ansi", lambda: False)
+    monkeypatch.setattr(cli, "create_prompt_input", refuse)
+
+    presenter = cli.create_chat_presenter(tmp_path / "history")
+
+    assert presenter.prompt() == "ligne lue"

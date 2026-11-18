@@ -15,9 +15,13 @@ MIN_WIDTH = 20
 def supports_ansi(console: Console | None = None) -> bool:
     """True si la sortie est un terminal capable d'afficher des séquences ANSI.
 
-    Une console Windows historique (sans séquences ANSI) afficherait les codes en clair."""
+    Une console Windows historique ou un terminal `TERM=dumb` afficherait les codes en clair."""
     console = console or Console()
-    return console.is_terminal and not console.legacy_windows
+    return (
+        console.is_terminal
+        and not console.legacy_windows
+        and not console.is_dumb_terminal
+    )
 
 
 def _console(buffer: StringIO, margin: int = 0) -> Console:
