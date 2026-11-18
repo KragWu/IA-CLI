@@ -34,8 +34,12 @@ class _TextMarkdown(Markdown):
     modèle les a écrits au lieu d'être avalés comme des balises."""
 
     def __init__(self, markup: str) -> None:
-        super().__init__(markup)
+        # `Markdown.__init__` analyse toujours son texte avec un parseur qui interprète le HTML :
+        # on le laisse analyser du vide, puis on installe notre propre analyse (`markup` et
+        # `parsed` sont les attributs que `rich` relit au rendu).
+        super().__init__("")
         parser = MarkdownIt("commonmark", {"html": False})
+        self.markup = markup
         self.parsed = parser.enable("strikethrough").enable("table").parse(markup)
 
 
