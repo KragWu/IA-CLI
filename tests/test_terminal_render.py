@@ -1,10 +1,11 @@
 import os
+from functools import partial
 from io import StringIO
 
 from rich.console import Console
 from rich.text import Text
 
-from iacli.adapters.cli_chat import CliChatPresenter
+from iacli.adapters.cli_chat import RESPONSE_MARGIN, CliChatPresenter
 from iacli.adapters.terminal_render import (
     render_diff,
     render_markdown,
@@ -165,3 +166,36 @@ def test_ansi_output_is_refused_on_a_legacy_windows_console():
     console = Console(file=StringIO(), force_terminal=True, legacy_windows=True)
 
     assert supports_ansi(console) is False
+
+
+def test_a_rendered_response_never_reaches_the_last_terminal_column(monkeypatch):
+    monkeypatch.setattr(
+        "iacli.adapters.terminal_render.shutil.get_terminal_size",
+        lambda: os.terminal_size((40, 24)),
+    )
+    output = []
+    presenter = CliChatPresenter(
+        output_fn=output.append,
+        render_markdown=partial(render_markdown, margin=RESPONSE_MARGIN),
+    )
+    code = (
+        "```python"
+        + chr(10)
+        + "print('une ligne de code assez longue')"
+        + chr(10)
+        + "```"
+    )
+
+    presenter.show_response(
+        "Voici :"
+        + chr(10)
+        + chr(10)
+        + code
+        + chr(10)
+        + chr(10)
+        + " ".join(["mot"] * 30)
+    )
+
+    lines = _plain(output[0]).splitlines()
+    assert len(lines) > 3
+    assert max(len(line) for line in lines) < 40

@@ -2,7 +2,7 @@ import io
 import sys
 
 from iacli import cli
-from iacli.adapters.cli_chat import RESPONSE_PREFIX
+from iacli.adapters.cli_chat import RESPONSE_MARGIN
 from iacli.domain.commands import COMMANDS
 from iacli.domain.status import PromptStatus
 
@@ -77,4 +77,4 @@ def test_the_markdown_renderer_leaves_room_for_the_response_prefix(
 
     presenter = cli.create_chat_presenter(tmp_path / "history")
 
-    assert presenter._render_markdown.keywords == {"margin": len(RESPONSE_PREFIX)}
+    assert presenter._render_markdown.keywords == {"margin": RESPONSE_MARGIN}
