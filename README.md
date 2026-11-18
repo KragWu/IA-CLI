@@ -177,7 +177,8 @@ Détails de fonctionnement :
 ### Ce qui s'affiche pendant un tour
 
 - La réponse finale est rendue en markdown (gras, titres, listes, blocs de code colorés) quand la sortie est un
-  terminal interactif (les balises comme `List<String>` ou `<div>` restent du texte, jamais interprétées comme du HTML) ; redirigée vers un fichier ou un tube, ou dans un terminal sans séquences ANSI (console Windows historique, `TERM=dumb`), elle reste en texte brut, comme la saisie : sans lui, l'invite se limite à une ligne.
+  terminal interactif (les balises comme `List<String>` ou `<div>` restent du texte, jamais interprétées comme du HTML) ; redirigée vers un fichier ou un tube, ou dans un terminal sans séquences ANSI (console Windows historique, `TERM=dumb`), elle reste en texte brut. Dans ces cas, la saisie avancée (multiligne, Tab, historique) est aussi désactivée et l'invite se
+  limite à une ligne.
   Le rendu tient compte de la largeur du terminal et aligne les lignes suivantes sous le préfixe `iacli>`.
   Les diffs proposés avant une écriture sont colorés de la même façon (lignes ajoutées et supprimées).
 - Un indicateur animé avec la durée écoulée (uniquement dans un terminal interactif ; sur `stderr`), le nom des outils
@@ -226,7 +227,7 @@ save_history = false
 | `model`        | Modèle utilisé par le chat (doit gérer les outils).                                            |
 | `num_ctx`      | Fenêtre de contexte demandée à Ollama, en tokens (entier strictement positif).                 |
 | `end_of_line`  | Section `[files]` : fin de ligne des **nouveaux** fichiers, `"auto"` (celle du système : CRLF sous Windows, LF ailleurs), `"lf"` ou `"crlf"`. |
-| `save_history` | Section `[chat]` : enregistre les messages saisis, **en clair**, dans le fichier `history` du dossier de configuration (flèches haut et bas entre deux sessions). `false` par défaut : un secret collé dans le chat resterait sur le disque. |
+| `save_history` | Section `[chat]` : enregistre les messages saisis, **en clair**, dans le fichier `history` du dossier de configuration (flèches haut et bas entre deux sessions). `false` par défaut : un secret collé dans le chat resterait sur le disque. Aucun filtre ne reconnaît les secrets, et sous Windows le fichier n'a pas de droits restreints (ceux du profil utilisateur s'appliquent). |
 
 - **Fins de ligne** : un fichier existant garde toujours sa fin de ligne la plus fréquente, quel que soit le réglage ou
   le système. `end_of_line` ne s'applique qu'aux nouveaux fichiers, et aux fichiers existants qui ne permettent pas de
