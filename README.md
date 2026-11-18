@@ -91,8 +91,9 @@ Redirigée (tube, fichier), la saisie se limite à une ligne lue sur l'entrée s
 
 - `/exit` ou `/quit` (insensible à la casse) ferme la conversation.
 - `/help` liste les commandes ; `/clear` efface l'historique (les instructions sont conservées) ; `/context` rappelle
-  l'occupation du contexte au dernier tour. Un mot de la forme `/nom` inconnu est signalé comme une erreur et n'est pas
-  envoyé au modèle (un chemin comme `/etc/hosts` reste un message normal).
+  l'occupation du contexte au dernier tour. Un mot de la forme `/nom` inconnu, **seul** sur la ligne, est signalé comme une
+  erreur et n'est pas envoyé au modèle ; suivi de texte (`/tmp contient quoi ?`) ou sous forme de chemin (`/etc/hosts`),
+  c'est un message normal.
 - `Ctrl+D` (fin de fichier) ou `Ctrl+C` **à l'invite `vous>`** ferme aussi la conversation.
 - `Ctrl+C` **pendant le traitement d'une demande** annule seulement ce tour (et arrête la commande shell en cours) :
   `Génération annulée` s'affiche (ce n'est pas une erreur) et la conversation reste ouverte.

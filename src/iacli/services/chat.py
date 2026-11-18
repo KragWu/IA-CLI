@@ -14,7 +14,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from iacli.domain.commands import COMMANDS, find_command, looks_like_command
+from iacli.domain.commands import COMMANDS, find_command, is_command_input
 from iacli.services.agent_graph import AgentState, build_control_graph
 from iacli.services.ports import ChatPresenter, ToolsFactory
 from iacli.services.tool_call_parser import is_tool_call_feedback
@@ -131,7 +131,7 @@ class ChatSession:
         user_input = user_input.strip()
         if not user_input:
             return True
-        if looks_like_command(user_input):
+        if is_command_input(user_input):
             return self._handle_command(user_input)
         self._run_turn(user_input)
         return True

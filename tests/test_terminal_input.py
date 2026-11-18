@@ -56,6 +56,10 @@ def test_unknown_command_is_highlighted_as_an_error():
     assert _first_line_styles("/inconnue")[0] == ("class:unknown-command", "/inconnue")
 
 
+def test_an_unknown_word_followed_by_text_is_not_flagged_as_a_command():
+    assert _first_line_styles("/tmp contient quoi") == [("", "/tmp contient quoi")]
+
+
 def test_arguments_and_plain_text_keep_the_default_style():
     styles = _first_line_styles("/help suite")
 
