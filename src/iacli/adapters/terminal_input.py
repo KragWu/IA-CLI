@@ -20,7 +20,7 @@ from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.styles import Style
 
 from iacli.domain.commands import InputKind, SlashCommand, parse_input
-from iacli.domain.status import PromptStatus
+from iacli.domain.status import PromptStatus, format_tokens
 
 # Part de la fenêtre de contexte à partir de laquelle la barre d'état passe à l'orange / au rouge.
 WARN_RATIO = 0.6
@@ -109,8 +109,8 @@ def render_toolbar(status: PromptStatus) -> StyleAndTextTuples:
             if ratio >= WARN_RATIO
             else "class:ok"
         )
-        used = f"{status.context_used:,}".replace(",", " ")
-        limit = f"{status.context_limit:,}".replace(",", " ")
+        used = format_tokens(status.context_used)
+        limit = format_tokens(status.context_limit)
         tokens.append(("", "· contexte "))
         tokens.append((style, f"{used} / {limit} tokens ({round(100 * ratio)} %)"))
         tokens.append(("", " "))

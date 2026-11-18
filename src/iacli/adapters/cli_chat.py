@@ -9,7 +9,7 @@ from time import perf_counter
 from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
-from iacli.domain.status import PromptStatus
+from iacli.domain.status import PromptStatus, format_tokens
 
 # Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
 RESPONSE_PREFIX = "iacli> "
@@ -111,7 +111,7 @@ class CliChatPresenter:
     def show_context_usage(self, used: int, limit: int) -> None:
         self._context = (used, limit)
         self._emit(
-            f"contexte> {self._format_tokens(used)} / {self._format_tokens(limit)} "
+            f"contexte> {format_tokens(used)} / {format_tokens(limit)} "
             f"tokens ({round(100 * used / limit)} %)"
         )
 
@@ -121,13 +121,9 @@ class CliChatPresenter:
     def show_context_warning(self, used: int, limit: int) -> None:
         self._emit(
             f"attention> contexte utilisé à {round(100 * used / limit)} % : au-delà de "
-            f"{self._format_tokens(limit)} tokens, Ollama peut tronquer les plus "
+            f"{format_tokens(limit)} tokens, Ollama peut tronquer les plus "
             "anciens messages de la conversation."
         )
-
-    @staticmethod
-    def _format_tokens(count: int) -> str:
-        return f"{count:,}".replace(",", " ")
 
     def start_progress(self) -> None:
         """Démarre le chronomètre du tour et l'animation (terminal interactif uniquement)."""
