@@ -180,3 +180,65 @@ def test_a_multiline_message_starting_with_a_command_word_is_not_lost(tmp_path):
 
     assert any(line.startswith("erreur>") for line in output)
     assert model.calls == []
+
+
+USAGE = {"input_tokens": 400, "output_tokens": 100, "total_tokens": 500}
+
+
+def _statuses_at_each_prompt(tmp_path, model, prompts):
+    iterator = iter(prompts)
+    statuses = []
+    output = []
+
+    class RecordingPresenter(CliChatPresenter):
+        def prompt(self):
+            statuses.append(self.prompt_status().context_used)
+            return super().prompt()
+
+    run_chat(
+        model,
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=RecordingPresenter(
+            input_fn=lambda _prompt: next(iterator), output_fn=output.append
+        ),
+        tools_factory=create_workspace_tools,
+        context_limit=1000,
+    )
+    return statuses, output
+
+
+def test_a_successful_turn_without_measure_clears_the_stale_context(tmp_path):
+    model = FakeChatModel(
+        [
+            AIMessage(content="un", usage_metadata=USAGE),
+            AIMessage(content="deux, sans mesure"),
+        ]
+    )
+
+    statuses, output = _statuses_at_each_prompt(
+        tmp_path, model, ["a", "b", "/context", "/exit"]
+    )
+
+    assert statuses == [None, 500, None, None]
+    assert any("aucune mesure" in line for line in output)
+
+
+def test_a_failed_turn_keeps_the_last_measure_because_the_history_is_rolled_back(
+    tmp_path,
+):
+    class FailingSecondTurn(FakeChatModel):
+        def invoke(self, messages):
+            if self.calls:
+                self.calls.append(messages)
+                raise RuntimeError("panne du modèle")
+            self.calls.append(messages)
+            return AIMessage(content="un", usage_metadata=USAGE)
+
+    statuses, output = _statuses_at_each_prompt(
+        tmp_path, FailingSecondTurn(), ["a", "b", "/context", "/exit"]
+    )
+
+    assert statuses == [None, 500, 500, 500]
+    assert any(line.startswith("erreur>") for line in output)

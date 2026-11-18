@@ -186,6 +186,12 @@ class ChatSession:
         self._messages = outcome.messages
         if outcome.context_tokens is not None:
             self._last_context_tokens = outcome.context_tokens
+        elif not outcome.cancelled and outcome.error is None:
+            # Le tour a réussi mais Ollama n'a rien mesuré : l'historique a grandi, l'ancien
+            # chiffre sous-estimerait le contexte. (Un tour échoué ou annulé est retiré de
+            # l'historique, donc la dernière mesure reste exacte.)
+            self._last_context_tokens = None
+            presenter.clear_context_usage()
         if outcome.cancelled:
             presenter.show_cancelled()
         elif outcome.error is not None:
