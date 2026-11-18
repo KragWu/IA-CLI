@@ -7,7 +7,6 @@ from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 from iacli import cli
-from iacli.adapters.cli_chat import PromptStatus
 from iacli.adapters.terminal_input import create_prompt_input
 from iacli.domain.commands import COMMANDS
 from iacli.domain.config import (
@@ -16,6 +15,7 @@ from iacli.domain.config import (
     OllamaSettings,
 )
 from iacli.domain.models import ModelInfo
+from iacli.domain.status import PromptStatus
 from iacli.infrastructure.configuration import DEFAULT_CONFIG, FileConfigurationGateway
 
 

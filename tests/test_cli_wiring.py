@@ -2,8 +2,9 @@ import io
 import sys
 
 from iacli import cli
-from iacli.adapters.cli_chat import RESPONSE_PREFIX, PromptStatus
+from iacli.adapters.cli_chat import RESPONSE_PREFIX
 from iacli.domain.commands import COMMANDS
+from iacli.domain.status import PromptStatus
 
 
 class _Tty(io.StringIO):

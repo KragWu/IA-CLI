@@ -3,25 +3,16 @@
 import json
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Lock, RLock, Thread
 from time import perf_counter
 from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
+from iacli.domain.status import PromptStatus
 
 # Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
 RESPONSE_PREFIX = "iacli> "
-
-
-@dataclass(frozen=True)
-class PromptStatus:
-    """Ce que la barre d'état de la saisie affiche : modèle et occupation du contexte."""
-
-    model: str
-    context_used: int | None
-    context_limit: int | None
 
 
 class CliChatPresenter:

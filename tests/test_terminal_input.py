@@ -6,7 +6,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from iacli.adapters.cli_chat import CliChatPresenter, PromptStatus
+from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.terminal_input import (
     SlashCommandCompleter,
     SlashCommandLexer,
@@ -15,6 +15,7 @@ from iacli.adapters.terminal_input import (
     resolve_enter,
 )
 from iacli.domain.commands import COMMANDS
+from iacli.domain.status import PromptStatus
 
 
 def _completions(text):
