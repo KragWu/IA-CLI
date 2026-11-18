@@ -1,5 +1,15 @@
+import os
+from io import StringIO
+
+from rich.console import Console
+from rich.text import Text
+
 from iacli.adapters.cli_chat import CliChatPresenter
-from iacli.adapters.terminal_render import render_diff, render_markdown
+from iacli.adapters.terminal_render import (
+    render_diff,
+    render_markdown,
+    supports_ansi,
+)
 
 BOLD = "\x1b[1m"
 
@@ -93,3 +103,65 @@ def test_presenter_shows_the_raw_diff_without_a_renderer():
     presenter.confirm_file_write("f.py", DIFF)
 
     assert DIFF in output
+
+
+def _plain(rendered):
+    return Text.from_ansi(rendered).plain
+
+
+def test_markdown_wraps_within_the_terminal_width_minus_the_margin(monkeypatch):
+    monkeypatch.setattr(
+        "iacli.adapters.terminal_render.shutil.get_terminal_size",
+        lambda: os.terminal_size((40, 24)),
+    )
+    text = " ".join(["mot"] * 60)
+
+    lines = _plain(render_markdown(text, margin=7)).splitlines()
+
+    assert len(lines) > 1
+    assert max(len(line) for line in lines) <= 40 - 7
+
+
+def test_markdown_keeps_a_minimum_width_in_a_tiny_terminal(monkeypatch):
+    monkeypatch.setattr(
+        "iacli.adapters.terminal_render.shutil.get_terminal_size",
+        lambda: os.terminal_size((5, 24)),
+    )
+
+    assert "bonjour" in _plain(render_markdown("bonjour", margin=7))
+
+
+def test_the_following_lines_of_a_rendered_response_are_aligned_under_the_prefix():
+    output = []
+    presenter = CliChatPresenter(
+        output_fn=output.append, render_markdown=lambda text: "un\ndeux\ntrois"
+    )
+
+    presenter.show_response("peu importe")
+
+    assert output == ["\niacli> un\n       deux\n       trois\n"]
+
+
+def test_the_raw_response_is_left_untouched_without_a_renderer():
+    output = []
+    presenter = CliChatPresenter(output_fn=output.append)
+
+    presenter.show_response("un\ndeux")
+
+    assert output == ["\niacli> un\ndeux\n"]
+
+
+def test_ansi_output_needs_a_real_terminal():
+    assert supports_ansi(Console(file=StringIO(), force_terminal=False)) is False
+    assert (
+        supports_ansi(
+            Console(file=StringIO(), force_terminal=True, legacy_windows=False)
+        )
+        is True
+    )
+
+
+def test_ansi_output_is_refused_on_a_legacy_windows_console():
+    console = Console(file=StringIO(), force_terminal=True, legacy_windows=True)
+
+    assert supports_ansi(console) is False
