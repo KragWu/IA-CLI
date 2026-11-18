@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.domain.commands import COMMANDS, InputKind, parse_input
 from iacli.infrastructure.workspace_tools import create_workspace_tools
-from iacli.services.chat import run_chat
+from iacli.services.chat import ChatSession, run_chat
 from tests.fakes import FakeChatModel
 
 
@@ -242,3 +242,53 @@ def test_a_failed_turn_keeps_the_last_measure_because_the_history_is_rolled_back
 
     assert statuses == [None, 500, 500, 500]
     assert any(line.startswith("erreur>") for line in output)
+
+
+def test_a_cancelled_turn_reports_and_stores_no_measure(tmp_path):
+    holder = {}
+    discarded = {"input_tokens": 800, "output_tokens": 100, "total_tokens": 900}
+    tool_call = AIMessage(
+        content="",
+        tool_calls=[{"name": "list_files", "args": {}, "id": "1"}],
+        usage_metadata=discarded,
+    )
+
+    class CancelledSecondTurn(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return AIMessage(content="un", usage_metadata=USAGE)
+            holder["session"].cancel()
+            return tool_call
+
+    statuses = []
+    output = []
+    prompts = iter(["a", "b", "/context", "/exit"])
+
+    class RecordingPresenter(CliChatPresenter):
+        def prompt(self):
+            statuses.append(self.prompt_status().context_used)
+            return super().prompt()
+
+    session = ChatSession(
+        CancelledSecondTurn(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=RecordingPresenter(
+            input_fn=lambda _prompt: next(prompts), output_fn=output.append
+        ),
+        tools_factory=create_workspace_tools,
+        context_limit=1000,
+    )
+    holder["session"] = session
+    session.start()
+    while session.handle(session._presenter.prompt()):
+        pass
+
+    assert "Génération annulée" in output
+    # La mesure du tour annulé (900) n'est ni affichée ni gardée : l'historique est revenu
+    # à l'état du premier tour (500).
+    assert not any("900" in line for line in output)
+    assert statuses == [None, 500, 500, 500]
+    assert sum(line.startswith("contexte> 500") for line in output) == 2
