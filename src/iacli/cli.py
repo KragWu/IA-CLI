@@ -6,7 +6,7 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from iacli.adapters.cli_chat import RESPONSE_PREFIX, CliChatPresenter, PromptStatus
+from iacli.adapters.cli_chat import RESPONSE_PREFIX, CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter
 from iacli.adapters.terminal_input import create_prompt_input
 from iacli.adapters.terminal_render import (
@@ -16,6 +16,7 @@ from iacli.adapters.terminal_render import (
 )
 from iacli.domain.commands import COMMANDS
 from iacli.domain.config import OllamaSettings, resolve_newline
+from iacli.domain.status import PromptStatus
 from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
 from iacli.infrastructure.system import LocalSystemGateway

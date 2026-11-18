@@ -179,3 +179,14 @@ def test_composition_root_is_the_only_module_importing_both_outer_layers():
 @pytest.mark.parametrize("layer", ["domain", "services", "infrastructure"])
 def test_terminal_libraries_are_confined_to_the_adapters(layer):
     assert violations(layer, ("rich", "prompt_toolkit")) == []
+
+
+def test_adapters_do_not_depend_on_each_other():
+    # Les types partagés vivent dans le domaine ; seule la racine de composition les relie.
+    offenders = [
+        f"{module} importe {name}"
+        for module, name in imports_of("adapters")
+        if is_inside(name, "iacli.adapters") and not is_inside(name, module)
+    ]
+
+    assert offenders == []

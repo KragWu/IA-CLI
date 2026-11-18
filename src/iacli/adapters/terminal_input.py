@@ -18,8 +18,8 @@ from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.styles import Style
 
-from iacli.adapters.cli_chat import PromptStatus
 from iacli.domain.commands import SlashCommand, find_command, is_command_input
+from iacli.domain.status import PromptStatus
 
 # Part de la fenêtre de contexte à partir de laquelle la barre d'état passe à l'orange / au rouge.
 WARN_RATIO = 0.6
