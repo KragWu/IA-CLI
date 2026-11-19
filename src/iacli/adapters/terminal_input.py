@@ -189,9 +189,10 @@ def _create_history(history_path: Path | None) -> History:
 def _make_private(path: Path) -> None:
     """Crée le fichier s'il manque et le réserve à son propriétaire (mode 0600) : il contient
     en clair ce que l'utilisateur a saisi. Sans effet sous Windows, où les droits du profil
-    s'appliquent."""
+    s'appliquent. Si le système de fichiers ignore les droits, l'historique reste enregistré."""
     os.close(os.open(path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600))
-    path.chmod(0o600)
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
 
 
 def create_prompt_input(
