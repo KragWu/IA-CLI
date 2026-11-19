@@ -22,3 +22,11 @@ def test_plain_text_is_left_untouched():
 )
 def test_control_characters_become_visible_escapes(raw, shown):
     assert neutralize_control_characters(raw) == shown
+
+
+def test_a_crlf_line_ending_is_shown_as_a_plain_line_break():
+    assert neutralize_control_characters("a\r\nb\r\n") == "a\nb\n"
+
+
+def test_a_lone_carriage_return_is_still_made_visible():
+    assert neutralize_control_characters("a\r\r\nb\rc") == "a\\x0d\nb\\x0dc"
