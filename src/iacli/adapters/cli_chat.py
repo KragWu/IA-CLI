@@ -96,7 +96,7 @@ class CliChatPresenter:
         self._emit(f"erreur> {safe(message)}")
 
     def show_notice(self, message: str) -> None:
-        self._emit(message)
+        self._emit(safe(message))
 
     def show_help(self, commands: Sequence[SlashCommand]) -> None:
         self._emit("Commandes disponibles :")
@@ -114,7 +114,7 @@ class CliChatPresenter:
         self._emit(f"outil terminé> {safe(name)}")
 
     def show_action_timing(self, action: str, seconds: float) -> None:
-        self._emit(f"temps action> {action} : {self._format_duration(seconds)}")
+        self._emit(f"temps action> {safe(action)} : {self._format_duration(seconds)}")
 
     def show_total_duration(self, seconds: float) -> None:
         self._emit(f"temps total> demande : {self._format_duration(seconds)}")
