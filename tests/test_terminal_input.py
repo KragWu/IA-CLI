@@ -248,3 +248,16 @@ def test_blank_lines_before_the_command_stay_unstyled():
     newline = chr(10)
 
     assert _styles_of_line(newline + "/exit", 0) == [("", "")]
+
+
+def test_the_history_stays_in_its_file_when_the_permissions_cannot_be_set(
+    tmp_path, monkeypatch
+):
+    def refuse(self, *args, **kwargs):
+        raise PermissionError("droits non gérés")
+
+    monkeypatch.setattr(type(tmp_path), "chmod", refuse)
+
+    _read(tmp_path, "mon message\r")
+
+    assert "mon message" in (tmp_path / "history").read_text(encoding="utf-8")
