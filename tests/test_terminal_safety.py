@@ -91,3 +91,22 @@ def test_a_diff_is_shown_as_plain_text_when_the_rendering_fails():
     assert presenter.confirm_file_write("a.txt", "+ligne") is True
 
     assert "+ligne" in output
+
+
+def test_a_tool_call_cannot_send_control_characters_to_the_terminal():
+    presenter, output = _presenter()
+    csi = chr(0x9B)
+
+    presenter.show_tool_call(f"outil{csi}", {"path": f"a{csi}31m{chr(0x7F)}"})
+
+    _assert_safe(output)
+    assert csi not in "".join(output)
+    assert chr(0x7F) not in "".join(output)
+
+
+def test_a_tool_name_in_the_progress_message_is_neutralized():
+    presenter, _ = _presenter()
+
+    presenter.update_progress(f"outil {ESC}[2J")
+
+    assert ESC not in presenter._progress_message

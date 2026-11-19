@@ -108,7 +108,7 @@ class CliChatPresenter:
 
     def show_tool_call(self, name: str, arguments: dict[str, object]) -> None:
         serialized_arguments = json.dumps(arguments, ensure_ascii=False)
-        self._emit(f"outil> {name}({serialized_arguments})")
+        self._emit(f"outil> {safe(name)}({safe(serialized_arguments)})")
 
     def show_tool_result(self, name: str) -> None:
         self._emit(f"outil terminé> {name}")
@@ -161,7 +161,7 @@ class CliChatPresenter:
     def update_progress(self, message: str) -> None:
         """Change le message affiché à côté de l'animation."""
         with self._progress_lock:
-            self._progress_message = message
+            self._progress_message = safe(message)
 
     def stop_progress(self) -> None:
         """Arrête l'animation et efface sa ligne ; sans effet si elle n'est pas lancée."""
