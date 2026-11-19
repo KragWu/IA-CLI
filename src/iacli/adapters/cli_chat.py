@@ -10,6 +10,7 @@ from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
 from iacli.domain.status import PromptStatus, format_tokens
+from iacli.domain.text import neutralize_control_characters as safe
 
 # Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
 RESPONSE_PREFIX = "iacli> "
@@ -75,6 +76,7 @@ class CliChatPresenter:
         return PromptStatus(self._model, used, limit)
 
     def show_response(self, response: str) -> None:
+        response = safe(response)
         if self._render_markdown is not None:
             # Les lignes suivantes s'alignent sous le texte, après le préfixe.
             indent = " " * len(RESPONSE_PREFIX)
@@ -82,7 +84,7 @@ class CliChatPresenter:
         self._emit(f"\n{RESPONSE_PREFIX}{response}\n")
 
     def show_error(self, message: str) -> None:
-        self._emit(f"erreur> {message}")
+        self._emit(f"erreur> {safe(message)}")
 
     def show_notice(self, message: str) -> None:
         self._emit(message)
@@ -185,7 +187,8 @@ class CliChatPresenter:
     def confirm_file_write(self, path: str, diff: str) -> bool:
         """Suspend l'animation, montre le diff et demande confirmation (refus par défaut)."""
         self.stop_progress()
-        self._emit(f"Modification proposée pour {path} :")
+        diff = safe(diff)
+        self._emit(f"Modification proposée pour {safe(path)} :")
         self._emit(self._render_diff(diff) if self._render_diff else diff)
         try:
             return self._confirm("Appliquer cette modification ? [o/N] ")
@@ -195,7 +198,7 @@ class CliChatPresenter:
     def confirm_shell_command(self, command: str, workspace: Path) -> bool:
         """Suspend l'animation, montre la commande et demande confirmation (refus par défaut)."""
         self.stop_progress()
-        self._emit(f"Commande proposée dans {workspace} : {command}")
+        self._emit(f"Commande proposée dans {safe(str(workspace))} : {safe(command)}")
         try:
             return self._confirm("Exécuter cette commande ? [o/N] ")
         finally:
