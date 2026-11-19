@@ -95,3 +95,19 @@ def test_the_plain_prompt_is_kept_when_the_terminal_has_no_ansi_support(
     presenter = cli.create_chat_presenter(tmp_path / "history")
 
     assert presenter.prompt() == "ligne lue"
+
+
+def test_the_plain_prompt_is_used_when_the_rich_prompt_cannot_start(
+    monkeypatch, tmp_path
+):
+    def failing(*args, **kwargs):
+        raise OSError("pas de tampon d'écran console")
+
+    monkeypatch.setattr(sys, "stdin", _Tty("ligne lue" + chr(10)))
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "supports_ansi", lambda: True)
+    monkeypatch.setattr(cli, "create_prompt_input", failing)
+
+    presenter = cli.create_chat_presenter(tmp_path / "history")
+
+    assert presenter.prompt() == "ligne lue"
