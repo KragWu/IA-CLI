@@ -111,7 +111,7 @@ class CliChatPresenter:
         self._emit(f"outil> {safe(name)}({safe(serialized_arguments)})")
 
     def show_tool_result(self, name: str) -> None:
-        self._emit(f"outil terminé> {name}")
+        self._emit(f"outil terminé> {safe(name)}")
 
     def show_action_timing(self, action: str, seconds: float) -> None:
         self._emit(f"temps action> {action} : {self._format_duration(seconds)}")
