@@ -118,3 +118,19 @@ def test_a_tool_result_name_is_neutralized():
     presenter.show_tool_result(f"outil{ESC}]0;x")
 
     _assert_safe(output)
+
+
+def test_an_action_name_in_a_timing_line_is_neutralized():
+    presenter, output = _presenter()
+
+    presenter.show_action_timing(f"outil{ESC}]0;x", 1.0)
+
+    _assert_safe(output)
+
+
+def test_a_notice_is_neutralized():
+    presenter, output = _presenter()
+
+    presenter.show_notice(f"info{ESC}[2J")
+
+    _assert_safe(output)
