@@ -110,3 +110,11 @@ def test_a_tool_name_in_the_progress_message_is_neutralized():
     presenter.update_progress(f"outil {ESC}[2J")
 
     assert ESC not in presenter._progress_message
+
+
+def test_a_tool_result_name_is_neutralized():
+    presenter, output = _presenter()
+
+    presenter.show_tool_result(f"outil{ESC}]0;x")
+
+    _assert_safe(output)
