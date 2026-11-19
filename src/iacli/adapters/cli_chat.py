@@ -19,6 +19,14 @@ RESPONSE_PREFIX = "iacli> "
 RESPONSE_MARGIN = len(RESPONSE_PREFIX) + 1
 
 
+def _render_or_plain(render: Callable[[str], str], text: str) -> str:
+    """Texte rendu ; en cas d'échec du rendu, le texte brut : une réponse n'est jamais perdue."""
+    try:
+        return render(text)
+    except Exception:
+        return text
+
+
 class CliChatPresenter:
     """Implémente le port `ChatPresenter` pour un terminal.
 
@@ -80,7 +88,8 @@ class CliChatPresenter:
         if self._render_markdown is not None:
             # Les lignes suivantes s'alignent sous le texte, après le préfixe.
             indent = " " * len(RESPONSE_PREFIX)
-            response = self._render_markdown(response).replace("\n", "\n" + indent)
+            rendered = _render_or_plain(self._render_markdown, response)
+            response = rendered.replace("\n", "\n" + indent)
         self._emit(f"\n{RESPONSE_PREFIX}{response}\n")
 
     def show_error(self, message: str) -> None:
@@ -189,7 +198,9 @@ class CliChatPresenter:
         self.stop_progress()
         diff = safe(diff)
         self._emit(f"Modification proposée pour {safe(path)} :")
-        self._emit(self._render_diff(diff) if self._render_diff else diff)
+        self._emit(
+            _render_or_plain(self._render_diff, diff) if self._render_diff else diff
+        )
         try:
             return self._confirm("Appliquer cette modification ? [o/N] ")
         finally:

@@ -71,3 +71,23 @@ def test_a_proposed_shell_command_cannot_rewrite_the_screen():
 
     _assert_safe(output)
     assert "rm -rf x\\x0decho inoffensif" in "".join(output)
+
+
+def _broken(_text):
+    raise RuntimeError("rendu cassé")
+
+
+def test_a_response_is_shown_as_plain_text_when_the_rendering_fails():
+    presenter, output = _presenter(render_markdown=_broken)
+
+    presenter.show_response("réponse du modèle")
+
+    assert "iacli> réponse du modèle" in "".join(output)
+
+
+def test_a_diff_is_shown_as_plain_text_when_the_rendering_fails():
+    presenter, output = _presenter(render_diff=_broken)
+
+    assert presenter.confirm_file_write("a.txt", "+ligne") is True
+
+    assert "+ligne" in output
