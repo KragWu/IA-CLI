@@ -200,8 +200,9 @@ class ChatSession:
             self._cancel_requested,
         )
         self._messages = outcome.messages
-        # Un tour annulé ne rapporte aucune mesure : elle vient d'un appel interrompu, pour un
-        # historique qui vient d'être remis à l'état d'avant le tour. Un tour en erreur garde la
+        # Un tour annulé ne rapporte aucune mesure : elle vient d'un appel interrompu. Son
+        # historique garde les outils déjà exécutés (le modèle doit savoir qu'un fichier a été
+        # écrit) mais pas l'appel interrompu. Un tour en erreur garde la
         # sienne : elle dit ce que le dernier appel a consommé (et déclenche l'alerte de
         # contexte, utile quand l'erreur vient d'un dépassement de `num_ctx`).
         measure = None if outcome.cancelled else outcome.context_tokens
