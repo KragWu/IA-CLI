@@ -280,7 +280,7 @@ produisent un avertissement, pas une erreur fatale.
   compte peut atteindre. Lisez attentivement chaque commande avant de confirmer.
 - Le modèle est local, mais ses réponses peuvent être fausses : relisez les diffs avant d'accepter une modification.
 - Seuls les fichiers texte UTF-8 sont lus et modifiés.
-- Les caractères de contrôle (séquences d'échappement, retour chariot…) et les caractères invisibles ou d'inversion du sens d'écriture présents dans une réponse, un diff, un chemin ou une
+- Les caractères de contrôle (séquences d'échappement, retour chariot…) et les caractères invisibles ou d'inversion du sens d'écriture (catégorie Unicode « format », texte caché dans le bloc « tag »…) présents dans une réponse, un diff, un chemin ou une
   commande sont affichés sous forme visible (`\x1b`) et ne peuvent pas piloter votre terminal.
 
 ## Dépannage

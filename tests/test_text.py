@@ -47,6 +47,20 @@ def test_invisible_and_reordering_characters_become_visible_escapes(code):
     assert neutralize_control_characters(f"a{chr(code)}b") == f"a\\u{code:04x}b"
 
 
+@pytest.mark.parametrize(
+    "code",
+    [0x00AD, 0x034F, 0x2061, 0x2064, 0x115F, 0x1160, 0x3164, 0xFFA0, 0x180E],
+)
+def test_other_invisible_characters_become_visible_escapes(code):
+    assert neutralize_control_characters(f"a{chr(code)}b") == f"a\\u{code:04x}b"
+
+
+def test_unicode_tag_characters_hiding_text_become_visible_escapes():
+    hidden = "".join(chr(0xE0000 + ord(char)) for char in "rm")
+
+    assert neutralize_control_characters(f"ls{hidden}") == "ls\\U000e0072\\U000e006d"
+
+
 @pytest.mark.parametrize("text", ["👨‍👩‍👧", "می‌خواهم", "é́"])
 def test_joiners_and_combining_marks_are_kept(text):
     assert neutralize_control_characters(text) == text
