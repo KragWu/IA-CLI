@@ -28,5 +28,29 @@ def test_a_crlf_line_ending_is_shown_as_a_plain_line_break():
     assert neutralize_control_characters("a\r\nb\r\n") == "a\nb\n"
 
 
+@pytest.mark.parametrize(
+    "code",
+    [
+        *range(0x202A, 0x202F),
+        *range(0x2066, 0x206A),
+        0x200E,
+        0x200F,
+        0x061C,
+        0x2028,
+        0x2029,
+        0x200B,
+        0x2060,
+        0xFEFF,
+    ],
+)
+def test_invisible_and_reordering_characters_become_visible_escapes(code):
+    assert neutralize_control_characters(f"a{chr(code)}b") == f"a\\u{code:04x}b"
+
+
+@pytest.mark.parametrize("text", ["👨‍👩‍👧", "می‌خواهم", "é́"])
+def test_joiners_and_combining_marks_are_kept(text):
+    assert neutralize_control_characters(text) == text
+
+
 def test_a_lone_carriage_return_is_still_made_visible():
     assert neutralize_control_characters("a\r\r\nb\rc") == "a\\x0d\nb\\x0dc"
