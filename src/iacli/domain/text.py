@@ -1,15 +1,16 @@
 """Nettoyage du texte avant affichage dans un terminal."""
 
+import unicodedata
+
 _KEPT = {"\n", "\t"}
 
-# Caractères invisibles ou qui réordonnent l'affichage (« Trojan Source ») : un diff ou une
-# commande pourrait se lire autrement que ce qui s'exécute. Les liants U+200C et U+200D restent
+# Caractères invisibles ou qui réordonnent l'affichage (« Trojan Source », texte caché dans le
+# bloc « tag ») : un diff ou une commande pourrait se lire autrement que ce qui s'exécute. On
+# prend toute la catégorie Unicode « format » (Cf) et les séparateurs de ligne et de paragraphe,
+# plus le joiner de graphèmes U+034F et les « fillers » hangul, qui s'affichent comme du blanc. Les liants U+200C et U+200D restent
 # permis : les emojis composés et le persan en ont besoin.
-_DECEPTIVE = (
-    {0x061C, 0x200B, 0x200E, 0x200F, 0x2028, 0x2029, 0x2060, 0xFEFF}
-    | set(range(0x202A, 0x202F))
-    | set(range(0x2066, 0x206A))
-)
+_ALLOWED_FORMAT = {0x200C, 0x200D}
+_FILLERS = {0x034F, 0x115F, 0x1160, 0x3164, 0xFFA0}
 
 
 def neutralize_control_characters(text: str) -> str:
@@ -30,6 +31,16 @@ def _visible(char: str) -> str:
         return char
     if code < 0x20 or 0x7F <= code <= 0x9F:
         return f"\\x{code:02x}"
-    if code in _DECEPTIVE:
-        return f"\\u{code:04x}"
+    if _is_deceptive(char):
+        return f"\\u{code:04x}" if code <= 0xFFFF else f"\\U{code:08x}"
     return char
+
+
+def _is_deceptive(char: str) -> bool:
+    code = ord(char)
+    if code in _FILLERS:
+        return True
+    category = unicodedata.category(char)
+    return category in {"Zl", "Zp"} or (
+        category == "Cf" and code not in _ALLOWED_FORMAT
+    )
