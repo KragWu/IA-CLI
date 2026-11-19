@@ -133,11 +133,13 @@ def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
     def status() -> PromptStatus:
         return presenter.prompt_status()
 
-    prompt_fn = (
-        create_prompt_input(COMMANDS, history_path, status)
-        if ansi_output and sys.stdin.isatty()
-        else None
-    )
+    prompt_fn = None
+    if ansi_output and sys.stdin.isatty():
+        try:
+            prompt_fn = create_prompt_input(COMMANDS, history_path, status)
+        except Exception:
+            # Console sans tampon d'écran utilisable (certains émulateurs) : saisie simple.
+            prompt_fn = None
     presenter = CliChatPresenter(
         prompt_fn=prompt_fn,
         render_markdown=(
