@@ -271,3 +271,31 @@ def test_a_cancel_during_a_command_does_not_affect_the_next_message(tmp_path):
 
     assert "Génération annulée" not in output
     assert any("Réponse 1" in line for line in output)
+
+
+def test_a_cancelled_turn_keeps_the_tools_already_run_in_the_history(tmp_path):
+    holder = {}
+
+    class CancelAfterOneTool(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 2:
+                holder["session"].cancel()
+            if len(self.calls) <= 2:
+                return TOOL_CALL
+            return AIMessage(content="Réponse suivante")
+
+    model = CancelAfterOneTool()
+    session, _ = _session(tmp_path, model)
+    holder["session"] = session
+
+    session.handle("annulée après un outil")
+    session.handle("suivante")
+
+    sent = model.calls[2]
+    assert [type(m).__name__ for m in sent[-4:]] == [
+        "HumanMessage",
+        "AIMessage",
+        "ToolMessage",
+        "HumanMessage",
+    ]
