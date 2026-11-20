@@ -77,14 +77,19 @@ class InitializationPresenter(Protocol):
         ...
 
 
-class ChatPresenter(Protocol):
-    """Interaction console d'une conversation : saisie, affichage et confirmations."""
-
-    def start(self, workspace: Path, model: str) -> None: ...
+class ChatInput(Protocol):
+    """Lecture bloquante de la saisie : propre à la boucle console (une interface pilotée par
+    des événements, comme Textual, reçoit la saisie et appelle `ChatSession.handle`)."""
 
     def prompt(self) -> str:
         """Lit la saisie de l'utilisateur ; `EOFError` si l'entrée est fermée."""
         ...
+
+
+class ChatPresenter(Protocol):
+    """Affichage et confirmations d'une conversation, sans lecture de la saisie."""
+
+    def start(self, workspace: Path, model: str) -> None: ...
 
     def show_response(self, response: str) -> None: ...
 
@@ -146,3 +151,7 @@ class ToolsFactory(Protocol):
         confirm_shell_command: Callable[[str, Path], bool],
         on_action_timing: Callable[[str, float], None] | None = None,
     ) -> Sequence[BaseTool]: ...
+
+
+class ConsolePresenter(ChatPresenter, ChatInput, Protocol):
+    """Presenter de la boucle console : affiche, demande confirmation et lit la saisie."""

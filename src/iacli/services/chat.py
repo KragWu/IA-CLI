@@ -16,7 +16,7 @@ from langchain_core.messages import (
 
 from iacli.domain.commands import COMMANDS, InputKind, SlashCommand, parse_input
 from iacli.services.agent_graph import AgentState, build_control_graph
-from iacli.services.ports import ChatPresenter, ToolsFactory
+from iacli.services.ports import ChatPresenter, ConsolePresenter, ToolsFactory
 from iacli.services.tool_call_parser import is_tool_call_feedback
 
 # Nombre maximal d'exécutions d'outils par tour avant d'abandonner (évite les boucles).
@@ -232,7 +232,7 @@ def run_chat(
     instructions: str,
     model_name: str,
     *,
-    presenter: ChatPresenter,
+    presenter: ConsolePresenter,
     tools_factory: ToolsFactory,
     context_limit: int | None = None,
 ) -> None:
