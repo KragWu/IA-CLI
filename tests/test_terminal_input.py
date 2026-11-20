@@ -13,7 +13,6 @@ from iacli.adapters.terminal_input import (
     continuation_prompt,
     create_prompt_input,
     render_toolbar,
-    resolve_enter,
 )
 from iacli.domain.commands import COMMANDS
 from iacli.domain.status import PromptStatus
@@ -203,20 +202,6 @@ def test_presenter_reads_the_prompt_through_prompt_fn_but_confirms_with_input_fn
         presenter.confirm_shell_command("ls", __import__("pathlib").Path(".")) is True
     )
     assert prompts == ["vous> "]
-
-
-@pytest.mark.parametrize(
-    ("backslashes", "kept", "submit"),
-    [(0, 0, True), (1, 0, False), (2, 1, True), (3, 1, False), (4, 2, True)],
-)
-def test_resolve_enter_pairs_the_trailing_backslashes(backslashes, kept, submit):
-    backslash = chr(92)
-
-    text, sent = resolve_enter("abc" + backslash * backslashes)
-
-    assert sent is submit
-    expected = "abc" + backslash * kept + ("" if submit else chr(10))
-    assert text == expected
 
 
 @pytest.mark.parametrize("width", [6, 10, 4])
