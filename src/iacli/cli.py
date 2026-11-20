@@ -5,6 +5,7 @@ import os
 import sys
 from functools import partial
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from iacli.adapters.cli_chat import RESPONSE_MARGIN, CliChatPresenter
 from iacli.adapters.cli_presenter import CliPresenter
@@ -21,9 +22,12 @@ from iacli.infrastructure.configuration import FileConfigurationGateway
 from iacli.infrastructure.ollama import OllamaClient
 from iacli.infrastructure.system import LocalSystemGateway
 from iacli.infrastructure.workspace_tools import create_workspace_tools
-from iacli.services.chat import run_chat
+from iacli.services.chat import ChatSession, run_chat
 from iacli.services.initialize import InitializeApplication
-from iacli.services.ports import OllamaGateway
+from iacli.services.ports import ChatPresenter, OllamaGateway, ToolsFactory
+
+if TYPE_CHECKING:
+    from iacli.adapters.textual_chat import ChatApp
 
 
 class OllamaClientFactory:
@@ -102,9 +106,27 @@ def handle_chat(args: argparse.Namespace) -> None:
         temperature=0,
         num_ctx=num_ctx,
     )
+    # Fin de ligne des nouveaux fichiers : réglage `[files] end_of_line`, sinon l'OS.
+    tools_factory = partial(
+        create_workspace_tools,
+        default_newline=resolve_newline(configuration.files.end_of_line, os.linesep),
+    )
+    workspace = Path.cwd().resolve()
+    if getattr(args, "tui", False):
+        run_tui(
+            create_tui_app(
+                model,
+                workspace,
+                instructions,
+                model_name,
+                tools_factory=tools_factory,
+                context_limit=num_ctx,
+            )
+        )
+        return
     run_chat(
         model,
-        Path.cwd().resolve(),
+        workspace,
         instructions,
         model_name,
         presenter=create_chat_presenter(
@@ -112,15 +134,42 @@ def handle_chat(args: argparse.Namespace) -> None:
             if configuration.chat.save_history
             else None
         ),
-        # Fin de ligne des nouveaux fichiers : réglage `[files] end_of_line`, sinon l'OS.
-        tools_factory=partial(
-            create_workspace_tools,
-            default_newline=resolve_newline(
-                configuration.files.end_of_line, os.linesep
-            ),
-        ),
+        tools_factory=tools_factory,
         context_limit=num_ctx,
     )
+
+
+def create_tui_app(
+    model: object,
+    workspace: Path,
+    instructions: str,
+    model_name: str,
+    *,
+    tools_factory: ToolsFactory,
+    context_limit: int | None,
+) -> "ChatApp":
+    """Application Textual (option `--tui`) : refuse de démarrer hors terminal interactif."""
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise RuntimeError("--tui exige un terminal interactif (ni tube ni fichier).")
+    from iacli.adapters.textual_chat import ChatApp
+
+    def create_session(presenter: ChatPresenter) -> ChatSession:
+        return ChatSession(
+            model,
+            workspace,
+            instructions,
+            model_name,
+            presenter=presenter,
+            tools_factory=tools_factory,
+            context_limit=context_limit,
+        )
+
+    return ChatApp(create_session)
+
+
+def run_tui(app: "ChatApp") -> None:
+    """Lance l'application Textual en mode en ligne : le défilement du terminal est conservé."""
+    app.run(inline=True)
 
 
 def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
@@ -162,6 +211,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Chemin optionnel vers le dossier de configuration",
     )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        default=False,
+        help="Interface Textual expérimentale (terminal interactif requis)",
+    )
     commands = parser.add_subparsers(dest="command")
 
     init_parser = commands.add_parser(
@@ -184,6 +239,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=argparse.SUPPRESS,
         help="Chemin optionnel vers le dossier de configuration",
+    )
+    chat_parser.add_argument(
+        "--tui",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Interface Textual expérimentale (terminal interactif requis)",
     )
     chat_parser.set_defaults(func=handle_chat)
 

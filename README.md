@@ -104,6 +104,16 @@ Redirigée (tube, fichier), la saisie se limite à une ligne lue sur l'entrée s
 L'historique de la conversation est conservé en mémoire pendant la session uniquement ; il n'est pas enregistré sur le
 disque.
 
+### Interface Textual (expérimentale)
+
+`iacli --tui` (ou `iacli chat --tui`) lance le chat dans une interface Textual, en mode « en ligne » : le défilement
+du terminal est conservé. Elle exige un terminal interactif (pas de tube ni de fichier). `Ctrl+C` annule le tour en
+cours, ou quitte immédiatement s'il n'y en a pas ; `Ctrl+D` quitte toujours.
+
+Ce prototype n'a pas encore les confirmations, l'indicateur animé, la barre d'état, le rendu markdown, la saisie
+multiligne ni l'historique : les écritures de fichiers et les commandes shell y sont **refusées** (utilisez l'interface
+par défaut pour elles).
+
 ### Les outils de l'agent
 
 | Outil          | Rôle                                                       | Confirmation |
