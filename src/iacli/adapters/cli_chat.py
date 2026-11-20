@@ -9,7 +9,7 @@ from time import perf_counter
 from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
-from iacli.domain.status import PromptStatus, format_tokens
+from iacli.domain.status import PromptStatus, format_duration, format_tokens
 from iacli.domain.text import neutralize_control_characters as safe
 
 # Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
@@ -114,10 +114,10 @@ class CliChatPresenter:
         self._emit(f"outil terminé> {safe(name)}")
 
     def show_action_timing(self, action: str, seconds: float) -> None:
-        self._emit(f"temps action> {safe(action)} : {self._format_duration(seconds)}")
+        self._emit(f"temps action> {safe(action)} : {format_duration(seconds)}")
 
     def show_total_duration(self, seconds: float) -> None:
-        self._emit(f"temps total> demande : {self._format_duration(seconds)}")
+        self._emit(f"temps total> demande : {format_duration(seconds)}")
 
     def show_context_usage(self, used: int, limit: int) -> None:
         self._context = (used, limit)
@@ -183,7 +183,7 @@ class CliChatPresenter:
             with self._progress_lock:
                 message = self._progress_message
             elapsed = perf_counter() - self._progress_started_at
-            duration = self._format_duration(elapsed)
+            duration = format_duration(elapsed)
             with self._output_lock:
                 if self._progress_stop.is_set():
                     break
@@ -219,21 +219,3 @@ class CliChatPresenter:
         """True pour `o`, `oui`, `y` ou `yes` ; toute autre réponse, vide comprise, est un refus."""
         answer = self._input(prompt).strip().casefold()
         return answer in {"o", "oui", "y", "yes"}
-
-    @staticmethod
-    def _format_duration(seconds: float) -> str:
-        """Durée lisible : `850 ms`, `1.25 s`, `2 min 05 s` ou `1 h 02 min 03 s`."""
-        if seconds < 1:
-            milliseconds = seconds * 1000
-            if milliseconds < 10:
-                return f"{milliseconds:.1f} ms"
-            return f"{milliseconds:.0f} ms"
-        if seconds < 60:
-            return f"{seconds:.2f} s"
-        whole_seconds = round(seconds)
-        if seconds < 3600:
-            minutes, remaining_seconds = divmod(whole_seconds, 60)
-            return f"{minutes} min {remaining_seconds:02d} s"
-        hours, remainder = divmod(whole_seconds, 3600)
-        minutes, remaining_seconds = divmod(remainder, 60)
-        return f"{hours} h {minutes:02d} min {remaining_seconds:02d} s"

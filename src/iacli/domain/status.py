@@ -15,3 +15,21 @@ class PromptStatus:
 def format_tokens(count: int) -> str:
     """Nombre de tokens lisible, milliers séparés par une espace (`18 000`)."""
     return f"{count:,}".replace(",", " ")
+
+
+def format_duration(seconds: float) -> str:
+    """Durée lisible : `850 ms`, `1.25 s`, `2 min 05 s` ou `1 h 02 min 03 s`."""
+    if seconds < 1:
+        milliseconds = seconds * 1000
+        if milliseconds < 10:
+            return f"{milliseconds:.1f} ms"
+        return f"{milliseconds:.0f} ms"
+    if seconds < 60:
+        return f"{seconds:.2f} s"
+    whole_seconds = round(seconds)
+    if seconds < 3600:
+        minutes, remaining_seconds = divmod(whole_seconds, 60)
+        return f"{minutes} min {remaining_seconds:02d} s"
+    hours, remainder = divmod(whole_seconds, 3600)
+    minutes, remaining_seconds = divmod(remainder, 60)
+    return f"{hours} h {minutes:02d} min {remaining_seconds:02d} s"
