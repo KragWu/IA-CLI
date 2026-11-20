@@ -2,7 +2,7 @@ import pytest
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.terminal_input import render_toolbar
-from iacli.domain.status import PromptStatus, format_tokens
+from iacli.domain.status import PromptStatus, format_duration, format_tokens
 
 
 @pytest.mark.parametrize(
@@ -30,3 +30,12 @@ def test_the_status_bar_and_the_context_line_format_tokens_the_same_way():
     for shown in (lines[0], toolbar):
         assert format_tokens(1234567) in shown
         assert format_tokens(2000000) in shown
+
+
+def test_duration_formatter_uses_milliseconds_seconds_minutes_and_hours():
+    assert format_duration(0.5) == "500 ms"
+    assert format_duration(1.25) == "1.25 s"
+    assert format_duration(60) == "1 min 00 s"
+    assert format_duration(251) == "4 min 11 s"
+    assert format_duration(3600) == "1 h 00 min 00 s"
+    assert format_duration(3661) == "1 h 01 min 01 s"

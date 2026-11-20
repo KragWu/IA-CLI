@@ -947,17 +947,6 @@ def test_progress_animation_displays_elapsed_time():
     assert " ms)..." in stream.getvalue() or " s)..." in stream.getvalue()
 
 
-def test_duration_formatter_uses_milliseconds_seconds_minutes_and_hours():
-    format_duration = CliChatPresenter._format_duration
-
-    assert format_duration(0.5) == "500 ms"
-    assert format_duration(1.25) == "1.25 s"
-    assert format_duration(60) == "1 min 00 s"
-    assert format_duration(251) == "4 min 11 s"
-    assert format_duration(3600) == "1 h 00 min 00 s"
-    assert format_duration(3661) == "1 h 01 min 01 s"
-
-
 def test_output_clears_spinner_line_before_printing_while_progress_is_running():
     stream = TtyStringIO()
     presenter = CliChatPresenter(
