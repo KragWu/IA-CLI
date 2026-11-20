@@ -12,6 +12,19 @@ class PromptStatus:
     context_limit: int | None
 
 
+# Part de la fenêtre de contexte à partir de laquelle l'occupation passe à l'orange / au rouge.
+WARN_RATIO = 0.6
+DANGER_RATIO = 0.8
+
+
+def context_level(used: int, limit: int) -> str:
+    """Niveau d'occupation du contexte : `ok`, `warn` (dès 60 %) ou `danger` (dès 80 %)."""
+    ratio = used / limit
+    if ratio >= DANGER_RATIO:
+        return "danger"
+    return "warn" if ratio >= WARN_RATIO else "ok"
+
+
 def format_tokens(count: int) -> str:
     """Nombre de tokens lisible, milliers séparés par une espace (`18 000`)."""
     return f"{count:,}".replace(",", " ")

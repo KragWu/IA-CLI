@@ -20,11 +20,7 @@ from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.styles import Style
 
 from iacli.domain.commands import InputKind, SlashCommand, parse_input
-from iacli.domain.status import PromptStatus, format_tokens
-
-# Part de la fenêtre de contexte à partir de laquelle la barre d'état passe à l'orange / au rouge.
-WARN_RATIO = 0.6
-DANGER_RATIO = 0.8
+from iacli.domain.status import PromptStatus, context_level, format_tokens
 
 STYLE = Style.from_dict(
     {
@@ -108,18 +104,16 @@ def render_toolbar(status: PromptStatus) -> StyleAndTextTuples:
     """Barre d'état : modèle et, une fois mesurée, occupation du contexte (colorée par niveau)."""
     tokens: StyleAndTextTuples = [("", f" modèle {status.model} ")]
     if status.context_used is not None and status.context_limit:
-        ratio = status.context_used / status.context_limit
-        style = (
-            "class:danger"
-            if ratio >= DANGER_RATIO
-            else "class:warn"
-            if ratio >= WARN_RATIO
-            else "class:ok"
-        )
+        style = f"class:{context_level(status.context_used, status.context_limit)}"
         used = format_tokens(status.context_used)
         limit = format_tokens(status.context_limit)
         tokens.append(("", "· contexte "))
-        tokens.append((style, f"{used} / {limit} tokens ({round(100 * ratio)} %)"))
+        tokens.append(
+            (
+                style,
+                f"{used} / {limit} tokens ({round(100 * status.context_used / status.context_limit)} %)",
+            )
+        )
         tokens.append(("", " "))
     return tokens
 
