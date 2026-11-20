@@ -15,6 +15,7 @@ dependencies = [
     "markdown-it-py>=3,<5",
     "prompt-toolkit>=3,<4",
     "rich>=13,<16",
+    "textual>=8,<9",
 ]
 
 [project.scripts]
