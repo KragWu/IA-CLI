@@ -164,7 +164,9 @@ def create_tui_app(
             context_limit=context_limit,
         )
 
-    return ChatApp(create_session)
+    return ChatApp(
+        create_session, render_markdown=partial(render_markdown, margin=RESPONSE_MARGIN)
+    )
 
 
 def run_tui(app: "ChatApp") -> None:

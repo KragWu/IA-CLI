@@ -101,3 +101,40 @@ def test_confirmations_are_refused_until_the_modal_dialogs_exist():
     assert presenter.confirm_file_write("a.txt", "+x") is False
     assert presenter.confirm_shell_command("ls", Path(".")) is False
     assert len(lines) == 2
+
+
+def test_a_response_goes_through_the_markdown_renderer_when_there_is_one():
+    lines = []
+    presenter = TextualPresenter(emit=lines.append, render_markdown=str.upper)
+
+    presenter.show_response("**gras**")
+
+    assert any("iacli> **GRAS**" in line for line in lines)
+
+
+def test_the_text_is_neutralized_before_the_markdown_rendering():
+    seen = []
+    lines = []
+
+    def render(text):
+        seen.append(text)
+        return text
+
+    presenter = TextualPresenter(emit=lines.append, render_markdown=render)
+
+    presenter.show_response(f"a{ESC}b")
+
+    assert seen == ["a\\x1bb"]
+
+
+def test_a_failing_markdown_renderer_falls_back_to_the_plain_text():
+    lines = []
+
+    def failing(text):
+        raise ValueError("boom")
+
+    presenter = TextualPresenter(emit=lines.append, render_markdown=failing)
+
+    presenter.show_response("Bonjour")
+
+    assert any("iacli> Bonjour" in line for line in lines)

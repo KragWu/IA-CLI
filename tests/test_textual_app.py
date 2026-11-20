@@ -150,3 +150,28 @@ def test_ctrl_c_and_ctrl_d_at_the_prompt_quit_immediately(tmp_path):
 
     for key in ("ctrl+c", "ctrl+d"):
         asyncio.run(scenario(key))
+
+
+def test_ansi_lines_are_displayed_as_styled_text_without_escape_codes(tmp_path):
+    async def scenario():
+        def create_session(presenter):
+            return ChatSession(
+                FakeChatModel(),
+                tmp_path,
+                "",
+                "fake-model",
+                presenter=presenter,
+                tools_factory=create_workspace_tools,
+            )
+
+        app = ChatApp(create_session)
+        async with app.run_test() as pilot:
+            app._write(chr(27) + "[1mgras" + chr(27) + "[0m")
+            await pilot.pause()
+            log = app.query_one("#log")
+            rendered = " ".join(strip.text for strip in log.lines)
+
+            assert "gras" in rendered
+            assert chr(27) not in rendered
+
+    _run(scenario)

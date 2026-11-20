@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import ClassVar
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.widgets import Input, RichLog
@@ -24,11 +25,17 @@ RESPONSE_PREFIX = "iacli> "
 class TextualPresenter:
     """Implémente le port `ChatPresenter` pour l'interface Textual.
 
-    Chaque affichage est une ligne envoyée à `emit`. Les confirmations ne sont pas encore
-    disponibles : elles refusent l'action en le disant."""
+    Chaque affichage est une ligne envoyée à `emit`. `render_markdown` (optionnel) transforme
+    la réponse en texte avec séquences ANSI, que l'application affiche en style. Les
+    confirmations ne sont pas encore disponibles : elles refusent l'action en le disant."""
 
-    def __init__(self, emit: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        emit: Callable[[str], None],
+        render_markdown: Callable[[str], str] | None = None,
+    ) -> None:
         self._emit = emit
+        self._render_markdown = render_markdown
         self.context_usage: tuple[int, int] | None = None
 
     def start(self, workspace: Path, model: str) -> None:
@@ -36,7 +43,17 @@ class TextualPresenter:
         self._emit("Entrez /help pour les commandes, /exit ou /quit pour terminer.")
 
     def show_response(self, response: str) -> None:
-        self._emit(f"\n{RESPONSE_PREFIX}{safe(response)}\n")
+        response = safe(response)
+        if self._render_markdown is not None:
+            try:
+                rendered = self._render_markdown(response)
+            except Exception:
+                rendered = (
+                    response  # rendu impossible : le texte brut vaut mieux que rien
+                )
+            # Les lignes suivantes s'alignent sous le texte, après le préfixe.
+            response = rendered.replace("\n", "\n" + " " * len(RESPONSE_PREFIX))
+        self._emit(f"\n{RESPONSE_PREFIX}{response}\n")
 
     def show_error(self, message: str) -> None:
         self._emit(f"erreur> {safe(message)}")
@@ -119,13 +136,17 @@ class ChatApp(App[None]):
     ]
 
     def __init__(
-        self, create_session: Callable[[TextualPresenter], ChatSession]
+        self,
+        create_session: Callable[[TextualPresenter], ChatSession],
+        render_markdown: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__()
         self.transcript: list[str] = []
         self._busy = False
         self._ui_thread = threading.get_ident()
-        self._presenter = TextualPresenter(emit=self._emit)
+        self._presenter = TextualPresenter(
+            emit=self._emit, render_markdown=render_markdown
+        )
         self._session = create_session(self._presenter)
 
     def compose(self) -> ComposeResult:
@@ -146,7 +167,11 @@ class ChatApp(App[None]):
 
     def _write(self, line: str) -> None:
         self.transcript.append(line)
-        self.query_one("#log", RichLog).write(line)
+        # Seul le rendu markdown produit des séquences ANSI : le texte venu du modèle en est
+        # débarrassé par `safe` avant d'y arriver.
+        self.query_one("#log", RichLog).write(
+            Text.from_ansi(line) if chr(27) in line else line
+        )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value
