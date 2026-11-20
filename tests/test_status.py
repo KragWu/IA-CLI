@@ -2,7 +2,12 @@ import pytest
 
 from iacli.adapters.cli_chat import CliChatPresenter
 from iacli.adapters.terminal_input import render_toolbar
-from iacli.domain.status import PromptStatus, format_duration, format_tokens
+from iacli.domain.status import (
+    PromptStatus,
+    context_level,
+    format_duration,
+    format_tokens,
+)
 
 
 @pytest.mark.parametrize(
@@ -39,3 +44,18 @@ def test_duration_formatter_uses_milliseconds_seconds_minutes_and_hours():
     assert format_duration(251) == "4 min 11 s"
     assert format_duration(3600) == "1 h 00 min 00 s"
     assert format_duration(3661) == "1 h 01 min 01 s"
+
+
+@pytest.mark.parametrize(
+    ("used", "expected"),
+    [
+        (0, "ok"),
+        (59, "ok"),
+        (60, "warn"),
+        (79, "warn"),
+        (80, "danger"),
+        (120, "danger"),
+    ],
+)
+def test_the_context_level_turns_to_warn_at_60_percent_and_danger_at_80(used, expected):
+    assert context_level(used, 100) == expected
