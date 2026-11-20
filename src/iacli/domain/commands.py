@@ -1,6 +1,7 @@
 """Slash-commands du chat : registre et analyse d'une saisie, partagés par services et adapters."""
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -74,3 +75,24 @@ def resolve_enter(text: str) -> tuple[str, bool]:
     if trailing % 2:
         return body + literal + "\n", False
     return body + literal, True
+
+
+def matching_commands(
+    text: str, commands: Sequence[SlashCommand]
+) -> list[SlashCommand]:
+    """Commandes que le début de saisie `text` (un seul mot commençant par `/`) peut compléter."""
+    if not text.startswith("/") or any(char.isspace() for char in text):
+        return []
+    return [command for command in commands if command.name.startswith(text.casefold())]
+
+
+def common_prefix(names: Sequence[str]) -> str:
+    """Plus long début commun à tous les noms (vide s'il n'y en a aucun)."""
+    if not names:
+        return ""
+    first, last = min(names), max(names)
+    length = next(
+        (i for i, (a, b) in enumerate(zip(first, last, strict=False)) if a != b),
+        min(len(first), len(last)),
+    )
+    return first[:length]

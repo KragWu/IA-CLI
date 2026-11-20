@@ -19,6 +19,7 @@ from iacli.domain.commands import COMMANDS
 from iacli.domain.config import OllamaSettings, resolve_newline
 from iacli.domain.status import PromptStatus
 from iacli.infrastructure.configuration import FileConfigurationGateway
+from iacli.infrastructure.history import FileHistoryStore
 from iacli.infrastructure.ollama import OllamaClient
 from iacli.infrastructure.system import LocalSystemGateway
 from iacli.infrastructure.workspace_tools import create_workspace_tools
@@ -112,6 +113,9 @@ def handle_chat(args: argparse.Namespace) -> None:
         default_newline=resolve_newline(configuration.files.end_of_line, os.linesep),
     )
     workspace = Path.cwd().resolve()
+    history_path = (
+        configuration.directory / "history" if configuration.chat.save_history else None
+    )
     if getattr(args, "tui", False):
         run_tui(
             create_tui_app(
@@ -121,6 +125,7 @@ def handle_chat(args: argparse.Namespace) -> None:
                 model_name,
                 tools_factory=tools_factory,
                 context_limit=num_ctx,
+                history_path=history_path,
             )
         )
         return
@@ -129,11 +134,7 @@ def handle_chat(args: argparse.Namespace) -> None:
         workspace,
         instructions,
         model_name,
-        presenter=create_chat_presenter(
-            configuration.directory / "history"
-            if configuration.chat.save_history
-            else None
-        ),
+        presenter=create_chat_presenter(history_path),
         tools_factory=tools_factory,
         context_limit=num_ctx,
     )
@@ -147,6 +148,7 @@ def create_tui_app(
     *,
     tools_factory: ToolsFactory,
     context_limit: int | None,
+    history_path: Path | None = None,
 ) -> "ChatApp":
     """Application Textual (option `--tui`) : refuse de démarrer hors terminal interactif."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -168,6 +170,7 @@ def create_tui_app(
         create_session,
         render_markdown=partial(render_markdown, margin=RESPONSE_MARGIN),
         render_diff=render_diff,
+        history=FileHistoryStore(history_path) if history_path else None,
     )
 
 

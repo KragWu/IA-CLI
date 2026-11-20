@@ -7,6 +7,7 @@ import pytest
 from iacli import cli
 from iacli.cli import build_parser, handle_chat
 from iacli.domain.config import (
+    ChatSettings,
     ConfigurationState,
     FileSettings,
     OllamaSettings,
@@ -31,10 +32,11 @@ def test_the_tui_option_is_off_by_default():
 
 
 @pytest.fixture
-def chat_environment(tmp_path, monkeypatch):
+def chat_environment(request, tmp_path, monkeypatch):
     (tmp_path / "IACLI.md").write_text("instructions", encoding="utf-8")
     settings = OllamaSettings("http://x", "http://y", "m:latest", num_ctx=4096)
-    state = ConfigurationState(tmp_path, settings, files=FileSettings())
+    chat = ChatSettings(save_history=getattr(request, "param", False))
+    state = ConfigurationState(tmp_path, settings, files=FileSettings(), chat=chat)
 
     class Gateway:
         def installed_models(self):
@@ -136,3 +138,29 @@ def test_the_tui_leaves_the_mouse_to_the_terminal_so_the_text_can_be_selected():
     cli.run_tui(App())
 
     assert calls == [{"inline": True, "mouse": False}]
+
+
+def _started_app(chat_environment, monkeypatch):
+    started = []
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "run_tui", lambda app: started.append(app))
+    handle_chat(Namespace(config_dir=chat_environment, tui=True))
+    return started[0]
+
+
+@pytest.mark.parametrize("chat_environment", [True], indirect=True)
+def test_the_tui_saves_the_history_in_the_configuration_folder_when_enabled(
+    chat_environment, monkeypatch
+):
+    app = _started_app(chat_environment, monkeypatch)
+
+    app._history_store.append("bonjour")
+
+    assert (chat_environment / "history").exists()
+
+
+def test_the_tui_keeps_the_history_in_memory_by_default(chat_environment, monkeypatch):
+    app = _started_app(chat_environment, monkeypatch)
+
+    assert app._history_store is None

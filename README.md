@@ -117,7 +117,12 @@ le diff ou la commande, puis pose la question au-dessus de la saisie : `o` ou `y
 Un indicateur animé (avec la durée écoulée) s'affiche pendant qu'un tour travaille, et une barre d'état sous la saisie
 montre le modèle et l'occupation du contexte (vert, orange dès 60 %, rouge dès 80 %).
 
-Ce prototype n'a pas encore la saisie multiligne ni l'historique.
+La saisie est multiligne comme dans l'interface par défaut : `Entrée` envoie, une barre oblique inverse en fin de ligne
+(`\`) ou `Ctrl+J` passent à la ligne, `Tab` complète les slash-commands, et les flèches haut et bas parcourent les
+messages précédents. L'historique suit le réglage `[chat] save_history` (en mémoire par défaut, dans `history` s'il est
+activé, fichier partagé avec l'interface par défaut).
+
+La coloration de la saisie n'est pas encore reprise dans cette interface.
 
 ### Les outils de l'agent
 

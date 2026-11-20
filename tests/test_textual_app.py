@@ -13,7 +13,7 @@ TOOL_CALL = AIMessage(
 )
 
 
-def _app(tmp_path, model=None):
+def _app(tmp_path, model=None, history=None):
     def create_session(presenter):
         return ChatSession(
             model or FakeChatModel(),
@@ -24,7 +24,7 @@ def _app(tmp_path, model=None):
             tools_factory=create_workspace_tools,
         )
 
-    return ChatApp(create_session)
+    return ChatApp(create_session, history=history)
 
 
 def _run(scenario):
@@ -71,7 +71,7 @@ def test_the_input_is_cleared_and_usable_again_after_the_answer(tmp_path):
             await _send(app, pilot, "deux")
 
             assert "iacli> Réponse 2" in _transcript(app)
-            assert app.query_one("#prompt").value == ""
+            assert app.query_one("#prompt").text == ""
 
     _run(scenario)
 
@@ -322,5 +322,127 @@ def test_the_progress_message_can_change_and_the_indicator_pauses(tmp_path):
             app.stop_progress()
             app.resume_progress()
             assert not app.query_one("#progress").display
+
+    _run(scenario)
+
+
+def _prompt_text(app):
+    return app.query_one("#prompt").text
+
+
+def test_a_trailing_backslash_continues_on_the_next_line_instead_of_sending(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press("a", "backslash", "enter", "b")
+
+            assert _prompt_text(app) == "a" + chr(10) + "b"
+            assert not any(line.startswith("vous>") for line in app.transcript)
+
+            await pilot.press("enter")
+            await app.workers.wait_for_complete()
+            assert "vous> a" + chr(10) + "b" in app.transcript
+
+    _run(scenario)
+
+
+def test_ctrl_j_inserts_a_new_line(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press("a", "ctrl+j", "b")
+
+            assert _prompt_text(app) == "a" + chr(10) + "b"
+
+    _run(scenario)
+
+
+def test_tab_completes_a_unique_slash_command(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press("slash", "h", "tab")
+
+            assert _prompt_text(app) == "/help"
+
+    _run(scenario)
+
+
+def test_tab_completes_the_common_prefix_and_lists_the_candidates(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press("slash", "c", "tab")
+
+            assert _prompt_text(app) == "/c"
+            hint = str(app.query_one("#hint").render())
+            assert "/clear" in hint
+            assert "/context" in hint
+
+            await pilot.press("l")
+            assert not app.query_one("#hint").display
+
+    _run(scenario)
+
+
+def test_the_arrows_browse_the_history_and_restore_the_draft(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await _send(app, pilot, "un")
+            await _send(app, pilot, "deux")
+            await pilot.press("t", "r")
+            await pilot.press("up")
+            assert _prompt_text(app) == "deux"
+            await pilot.press("up")
+            assert _prompt_text(app) == "un"
+            await pilot.press("down", "down")
+            assert _prompt_text(app) == "tr"
+
+    _run(scenario)
+
+
+def test_the_up_arrow_moves_in_a_multiline_message_before_browsing_the_history(
+    tmp_path,
+):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await _send(app, pilot, "ancien")
+            await pilot.press("a", "ctrl+j", "b", "up")
+
+            assert _prompt_text(app) == "a" + chr(10) + "b"
+
+    _run(scenario)
+
+
+class _MemoryStore:
+    def __init__(self, entries=()):
+        self.entries = list(entries)
+
+    def load(self):
+        return list(self.entries)
+
+    def append(self, text):
+        self.entries.append(text)
+
+
+def test_sent_messages_are_saved_and_the_saved_history_is_browsable(tmp_path):
+    async def scenario():
+        store = _MemoryStore(["ancien"])
+        app = _app(tmp_path, history=store)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press("up")
+            assert _prompt_text(app) == "ancien"
+            await pilot.press("down")
+
+            await _send(app, pilot, "nouveau")
+
+            assert store.entries == ["ancien", "nouveau"]
 
     _run(scenario)
