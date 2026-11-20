@@ -138,6 +138,14 @@ class ChatPresenter(Protocol):
         ...
 
 
+class HistoryStore(Protocol):
+    """Historique persistant des messages saisis (ne lève jamais d'erreur d'accès)."""
+
+    def load(self) -> list[str]: ...
+
+    def append(self, text: str) -> None: ...
+
+
 class ToolsFactory(Protocol):
     """Construit les outils de l'agent pour un projet.
 
