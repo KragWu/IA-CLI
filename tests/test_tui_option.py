@@ -120,6 +120,7 @@ def test_the_tui_colors_the_diffs(chat_environment, monkeypatch):
     lines = []
     app._presenter._emit = lines.append
     app._presenter._ask = lambda question: True
+    app._presenter._screen = None  # application non montée
     app._presenter.confirm_file_write("a.txt", "+ajout")
 
     assert chr(27) + "[" in "".join(lines)

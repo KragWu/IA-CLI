@@ -248,3 +248,79 @@ def test_the_question_stays_displayed_until_a_valid_answer(tmp_path):
             await app.workers.wait_for_complete()
 
     asyncio.run(scenario())
+
+
+def _text_of(app, selector):
+    return str(app.query_one(selector).render())
+
+
+def test_the_status_bar_shows_the_model_and_then_the_colored_context(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            assert "modèle fake-model" in _text_of(app, "#status")
+
+            app.set_context((500, 1000))
+            await pilot.pause()
+            assert "contexte 500 / 1 000 tokens (50 %)" in _text_of(app, "#status")
+            assert app.context_style == "green"
+
+            app.set_context((700, 1000))
+            assert app.context_style == "yellow"
+            app.set_context((900, 1000))
+            assert app.context_style == "red"
+
+            app.set_context(None)
+            await pilot.pause()
+            assert "contexte" not in _text_of(app, "#status")
+
+    _run(scenario)
+
+
+def test_the_progress_indicator_is_shown_during_a_turn_and_hidden_after(tmp_path):
+    release = threading.Event()
+
+    class SlowModel(FakeChatModel):
+        def invoke(self, messages):
+            release.wait(5)
+            return super().invoke(messages)
+
+    async def scenario():
+        app = _app(tmp_path, SlowModel())
+        async with app.run_test() as pilot:
+            assert not app.query_one("#progress").display
+
+            await pilot.click("#prompt")
+            await pilot.press(*"lent", "enter")
+            await pilot.pause(0.3)
+
+            assert app.query_one("#progress").display
+            assert "L'agent traite votre demande" in _text_of(app, "#progress")
+
+            release.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            assert not app.query_one("#progress").display
+
+    _run(scenario)
+
+
+def test_the_progress_message_can_change_and_the_indicator_pauses(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            app.start_progress()
+            app.set_progress_message("lecture de a.txt")
+            await pilot.pause(0.3)
+            assert "lecture de a.txt" in _text_of(app, "#progress")
+
+            app.pause_progress()
+            assert not app.query_one("#progress").display
+            app.resume_progress()
+            assert app.query_one("#progress").display
+
+            app.stop_progress()
+            app.resume_progress()
+            assert not app.query_one("#progress").display
+
+    _run(scenario)
