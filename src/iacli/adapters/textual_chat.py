@@ -12,7 +12,8 @@ from typing import ClassVar
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.widgets import Input, RichLog
+from textual.screen import ModalScreen
+from textual.widgets import Input, Label, RichLog
 
 from iacli.domain.commands import SlashCommand
 from iacli.domain.status import format_duration, format_tokens
@@ -26,16 +27,22 @@ class TextualPresenter:
     """Implémente le port `ChatPresenter` pour l'interface Textual.
 
     Chaque affichage est une ligne envoyée à `emit`. `render_markdown` (optionnel) transforme
-    la réponse en texte avec séquences ANSI, que l'application affiche en style. Les
-    confirmations ne sont pas encore disponibles : elles refusent l'action en le disant."""
+    la réponse en texte avec séquences ANSI, que l'application affiche en style, et
+    `render_diff` colore les diffs de la même façon. `ask` pose une question fermée à
+    l'utilisateur (bloquant, appelé depuis le thread de travail) ; sans lui, les écritures
+    et les commandes sont refusées en le disant."""
 
     def __init__(
         self,
         emit: Callable[[str], None],
         render_markdown: Callable[[str], str] | None = None,
+        render_diff: Callable[[str], str] | None = None,
+        ask: Callable[[str], bool] | None = None,
     ) -> None:
         self._emit = emit
         self._render_markdown = render_markdown
+        self._render_diff = render_diff
+        self._ask = ask
         self.context_usage: tuple[int, int] | None = None
 
     def start(self, workspace: Path, model: str) -> None:
@@ -109,18 +116,58 @@ class TextualPresenter:
         """Pas encore d'indicateur animé (étape suivante)."""
 
     def confirm_file_write(self, path: str, diff: str) -> bool:
-        self._emit(
-            f"erreur> confirmation indisponible dans cette interface : "
-            f"modification de {safe(path)} refusée."
+        diff = safe(diff)
+        rendered = self._render_diff_or_plain(diff)
+        self._emit(f"Modification proposée pour {safe(path)} :")
+        self._emit(rendered)
+        return self._confirm(
+            "Appliquer cette modification ? [o/N]",
+            refused=f"modification de {safe(path)} refusée.",
         )
-        return False
 
     def confirm_shell_command(self, command: str, workspace: Path) -> bool:
-        self._emit(
-            "erreur> confirmation indisponible dans cette interface : "
-            f"commande {safe(command)} refusée."
+        self._emit(f"Commande proposée dans {safe(str(workspace))} : {safe(command)}")
+        return self._confirm(
+            "Exécuter cette commande ? [o/N]",
+            refused=f"commande {safe(command)} refusée.",
         )
-        return False
+
+    def _render_diff_or_plain(self, diff: str) -> str:
+        if self._render_diff is None:
+            return diff
+        try:
+            return self._render_diff(diff)
+        except Exception:
+            return diff  # rendu impossible : le diff brut vaut mieux que rien
+
+    def _confirm(self, question: str, refused: str) -> bool:
+        """Pose la question ; sans moyen de la poser, l'action est refusée (et on le dit)."""
+        if self._ask is None:
+            self._emit(
+                f"erreur> confirmation indisponible dans cette interface : {refused}"
+            )
+            return False
+        return self._ask(question)
+
+
+class ConfirmationScreen(ModalScreen[bool]):
+    """Question fermée posée pendant qu'un outil attend : `o` ou `y` accepte, tout le reste
+    refuse (refus par défaut, comme la console)."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("o,y", "answer(True)", "Oui"),
+        Binding("n,enter,escape", "answer(False)", "Non"),
+    ]
+
+    def __init__(self, question: str) -> None:
+        super().__init__(id="confirmation")
+        self._question = question
+
+    def compose(self) -> ComposeResult:
+        yield Label(safe(self._question))
+
+    def action_answer(self, accepted: bool) -> None:
+        self.dismiss(accepted)
 
 
 class ChatApp(App[None]):
@@ -139,13 +186,18 @@ class ChatApp(App[None]):
         self,
         create_session: Callable[[TextualPresenter], ChatSession],
         render_markdown: Callable[[str], str] | None = None,
+        render_diff: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__()
+        self._confirmation: ConfirmationScreen | None = None
         self.transcript: list[str] = []
         self._busy = False
         self._ui_thread = threading.get_ident()
         self._presenter = TextualPresenter(
-            emit=self._emit, render_markdown=render_markdown
+            emit=self._emit,
+            render_markdown=render_markdown,
+            render_diff=render_diff,
+            ask=self._ask,
         )
         self._session = create_session(self._presenter)
 
@@ -196,12 +248,39 @@ class ChatApp(App[None]):
         prompt.disabled = False
         prompt.focus()
 
+    def _ask(self, question: str) -> bool:
+        """Pose la question et attend la réponse ; appelé depuis le thread de travail."""
+        answered = threading.Event()
+        answer: list[bool] = []
+
+        def finish(accepted: bool | None) -> None:
+            answer.append(bool(accepted))
+            answered.set()
+
+        self.call_from_thread(self._open_confirmation, question, finish)
+        answered.wait()
+        return answer[0]
+
+    def _open_confirmation(
+        self, question: str, finish: Callable[[bool | None], None]
+    ) -> None:
+        screen = ConfirmationScreen(question)
+        self._confirmation = screen
+        self.push_screen(screen, finish)
+
+    def _refuse_confirmation(self) -> None:
+        if self._confirmation is not None and self._confirmation.is_attached:
+            self._confirmation.dismiss(False)
+        self._confirmation = None
+
     def action_interrupt(self) -> None:
+        self._refuse_confirmation()
         if self._busy:
             self._session.cancel()
         else:
             self.exit()
 
     def action_leave(self) -> None:
+        self._refuse_confirmation()
         self._session.cancel()
         self.exit()

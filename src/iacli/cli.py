@@ -165,7 +165,9 @@ def create_tui_app(
         )
 
     return ChatApp(
-        create_session, render_markdown=partial(render_markdown, margin=RESPONSE_MARGIN)
+        create_session,
+        render_markdown=partial(render_markdown, margin=RESPONSE_MARGIN),
+        render_diff=render_diff,
     )
 
 
