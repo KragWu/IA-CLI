@@ -114,7 +114,10 @@ Les réponses sont rendues en markdown et les diffs sont colorés. Une écriture
 le diff ou la commande, puis pose la question au-dessus de la saisie : `o` ou `y` accepte, `n`, `Entrée` ou `Échap` refuse
 (refus par défaut) ; `Ctrl+C` pendant la question refuse et annule le tour.
 
-Ce prototype n'a pas encore l'indicateur animé, la barre d'état, la saisie multiligne ni l'historique.
+Un indicateur animé (avec la durée écoulée) s'affiche pendant qu'un tour travaille, et une barre d'état sous la saisie
+montre le modèle et l'occupation du contexte (vert, orange dès 60 %, rouge dès 80 %).
+
+Ce prototype n'a pas encore la saisie multiligne ni l'historique.
 
 ### Les outils de l'agent
 

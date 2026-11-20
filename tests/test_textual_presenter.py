@@ -1,3 +1,4 @@
+import contextlib
 from pathlib import Path
 
 from iacli.adapters.textual_chat import TextualPresenter
@@ -193,3 +194,86 @@ def test_without_a_way_to_ask_the_actions_are_refused_and_said_so():
     assert presenter.confirm_file_write("a.txt", "+x") is False
     assert presenter.confirm_shell_command("ls", Path(".")) is False
     assert sum("refusée" in line for line in lines) == 2
+
+
+class _Screen:
+    def __init__(self):
+        self.calls = []
+
+    def start_progress(self):
+        self.calls.append("start")
+
+    def set_progress_message(self, message):
+        self.calls.append(("message", message))
+
+    def pause_progress(self):
+        self.calls.append("pause")
+
+    def resume_progress(self):
+        self.calls.append("resume")
+
+    def stop_progress(self):
+        self.calls.append("stop")
+
+    def set_model(self, model):
+        self.calls.append(("model", model))
+
+    def set_context(self, context):
+        self.calls.append(("context", context))
+
+
+def test_the_progress_and_the_context_are_forwarded_to_the_screen():
+    screen = _Screen()
+    presenter = TextualPresenter(emit=lambda line: None, screen=screen)
+
+    presenter.start_progress()
+    presenter.update_progress(f"lit{ESC}")
+    presenter.stop_progress()
+    presenter.show_context_usage(500, 1000)
+    presenter.clear_context_usage()
+
+    assert screen.calls == [
+        "start",
+        ("message", "lit\\x1b"),
+        "stop",
+        ("context", (500, 1000)),
+        ("context", None),
+    ]
+
+
+def test_the_progress_is_paused_while_a_question_is_asked():
+    screen = _Screen()
+    order = []
+    presenter = TextualPresenter(
+        emit=lambda line: None,
+        screen=screen,
+        ask=lambda question: order.append(list(screen.calls)) or True,
+    )
+
+    presenter.confirm_shell_command("ls", Path("."))
+
+    assert order == [["pause"]]
+    assert screen.calls == ["pause", "resume"]
+
+
+def test_the_progress_is_resumed_even_when_asking_fails():
+    screen = _Screen()
+
+    def failing(question):
+        raise RuntimeError("boom")
+
+    presenter = TextualPresenter(emit=lambda line: None, screen=screen, ask=failing)
+
+    with contextlib.suppress(RuntimeError):
+        presenter.confirm_shell_command("ls", Path("."))
+
+    assert screen.calls == ["pause", "resume"]
+
+
+def test_the_model_name_is_forwarded_to_the_screen_when_the_chat_starts():
+    screen = _Screen()
+    presenter = TextualPresenter(emit=lambda line: None, screen=screen)
+
+    presenter.start(Path("projet"), f"qwen{ESC}")
+
+    assert screen.calls == [("model", "qwen" + chr(92) + "x1b")]

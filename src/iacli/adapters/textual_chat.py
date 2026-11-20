@@ -7,7 +7,8 @@ import json
 import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import ClassVar
+from time import perf_counter
+from typing import Any, ClassVar, Protocol
 
 from rich.text import Text
 from textual import events
@@ -16,11 +17,30 @@ from textual.binding import Binding, BindingType
 from textual.widgets import Input, Label, RichLog
 
 from iacli.domain.commands import SlashCommand
-from iacli.domain.status import format_duration, format_tokens
+from iacli.domain.status import context_level, format_duration, format_tokens
 from iacli.domain.text import neutralize_control_characters as safe
 from iacli.services.chat import ChatSession
 
 RESPONSE_PREFIX = "iacli> "
+
+
+class ChatScreen(Protocol):
+    """Ce que le presenter pilote dans l'interface en dehors du journal : indicateur de
+    progression animé et barre d'état. Appelé depuis n'importe quel thread."""
+
+    def start_progress(self) -> None: ...
+
+    def set_progress_message(self, message: str) -> None: ...
+
+    def pause_progress(self) -> None: ...
+
+    def resume_progress(self) -> None: ...
+
+    def stop_progress(self) -> None: ...
+
+    def set_model(self, model: str) -> None: ...
+
+    def set_context(self, context: tuple[int, int] | None) -> None: ...
 
 
 class TextualPresenter:
@@ -30,7 +50,8 @@ class TextualPresenter:
     la réponse en texte avec séquences ANSI, que l'application affiche en style, et
     `render_diff` colore les diffs de la même façon. `ask` pose une question fermée à
     l'utilisateur (bloquant, appelé depuis le thread de travail) ; sans lui, les écritures
-    et les commandes sont refusées en le disant."""
+    et les commandes sont refusées en le disant. `screen` reçoit la progression et le niveau
+    de contexte pour l'indicateur animé et la barre d'état."""
 
     def __init__(
         self,
@@ -38,14 +59,18 @@ class TextualPresenter:
         render_markdown: Callable[[str], str] | None = None,
         render_diff: Callable[[str], str] | None = None,
         ask: Callable[[str], bool] | None = None,
+        screen: "ChatScreen | None" = None,
     ) -> None:
         self._emit = emit
+        self._screen = screen
         self._render_markdown = render_markdown
         self._render_diff = render_diff
         self._ask = ask
         self.context_usage: tuple[int, int] | None = None
 
     def start(self, workspace: Path, model: str) -> None:
+        if self._screen is not None:
+            self._screen.set_model(safe(model))
         self._emit(f"IA-CLI — modèle {safe(model)} — projet {safe(str(workspace))}")
         self._emit("Entrez /help pour les commandes, /exit ou /quit pour terminer.")
 
@@ -91,6 +116,8 @@ class TextualPresenter:
 
     def show_context_usage(self, used: int, limit: int) -> None:
         self.context_usage = (used, limit)
+        if self._screen is not None:
+            self._screen.set_context((used, limit))
         self._emit(
             f"contexte> {format_tokens(used)} / {format_tokens(limit)} "
             f"tokens ({round(100 * used / limit)} %)"
@@ -98,6 +125,8 @@ class TextualPresenter:
 
     def clear_context_usage(self) -> None:
         self.context_usage = None
+        if self._screen is not None:
+            self._screen.set_context(None)
 
     def show_context_warning(self, used: int, limit: int) -> None:
         self._emit(
@@ -108,12 +137,16 @@ class TextualPresenter:
 
     def start_progress(self) -> None:
         self._emit("L'agent traite votre demande...")
+        if self._screen is not None:
+            self._screen.start_progress()
 
     def update_progress(self, message: str) -> None:
-        """Pas encore d'indicateur animé (étape suivante) : le message est ignoré."""
+        if self._screen is not None:
+            self._screen.set_progress_message(safe(message))
 
     def stop_progress(self) -> None:
-        """Pas encore d'indicateur animé (étape suivante)."""
+        if self._screen is not None:
+            self._screen.stop_progress()
 
     def confirm_file_write(self, path: str, diff: str) -> bool:
         diff = safe(diff)
@@ -147,7 +180,13 @@ class TextualPresenter:
                 f"erreur> confirmation indisponible dans cette interface : {refused}"
             )
             return False
-        return self._ask(question)
+        if self._screen is not None:
+            self._screen.pause_progress()
+        try:
+            return self._ask(question)
+        finally:
+            if self._screen is not None:
+                self._screen.resume_progress()
 
 
 class ChatApp(App[None]):
@@ -159,6 +198,8 @@ class ChatApp(App[None]):
 
     CSS = """
     #question { display: none; text-style: bold; color: yellow; }
+    #progress { display: none; }
+    #status { background: $panel; }
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -174,6 +215,13 @@ class ChatApp(App[None]):
     ) -> None:
         super().__init__()
         self._pending_answer: Callable[[bool], None] | None = None
+        self._model_name = ""
+        self._context_usage: tuple[int, int] | None = None
+        self._progress_active = False
+        self._progress_paused = False
+        self._progress_message = ""
+        self._progress_started = 0.0
+        self._progress_frame = 0
         self.transcript: list[str] = []
         self._busy = False
         self._ui_thread = threading.get_ident()
@@ -182,17 +230,22 @@ class ChatApp(App[None]):
             render_markdown=render_markdown,
             render_diff=render_diff,
             ask=self._ask,
+            screen=self,
         )
         self._session = create_session(self._presenter)
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="log", wrap=True, markup=False, highlight=False)
+        yield Label(id="progress")
         yield Label(id="question")
         yield Input(id="prompt", placeholder="vous> ")
+        yield Label(id="status")
 
     def on_mount(self) -> None:
         self._ui_thread = threading.get_ident()
+        self.set_interval(0.1, self._advance_spinner)
         self._session.start()
+        self._draw_status()
         self.query_one("#prompt", Input).focus()
 
     def _emit(self, line: str) -> None:
@@ -232,6 +285,97 @@ class ChatApp(App[None]):
         prompt = self.query_one("#prompt", Input)
         prompt.disabled = False
         prompt.focus()
+
+    # Interface `ChatScreen` : appelée depuis le thread de travail, exécutée dans le thread
+    # de l'interface.
+
+    def _on_ui_thread(self, function: Callable[..., Any], *args: Any) -> None:
+        if threading.get_ident() == self._ui_thread:
+            function(*args)
+        else:
+            self.call_from_thread(function, *args)
+
+    def set_model(self, model: str) -> None:
+        self._on_ui_thread(self._apply_model, model)
+
+    def _apply_model(self, model: str) -> None:
+        self._model_name = model
+        self._draw_status()
+
+    def set_context(self, context: tuple[int, int] | None) -> None:
+        self._on_ui_thread(self._apply_context, context)
+
+    def _apply_context(self, context: tuple[int, int] | None) -> None:
+        self._context_usage = context
+        self._draw_status()
+
+    @property
+    def context_style(self) -> str:
+        """Couleur de l'occupation du contexte : vert, orange dès 60 %, rouge dès 80 %."""
+        if self._context_usage is None:
+            return ""
+        level = context_level(*self._context_usage)
+        return {"ok": "green", "warn": "yellow", "danger": "red"}[level]
+
+    def _draw_status(self) -> None:
+        status = Text(f" modèle {self._model_name} ")
+        if self._context_usage is not None:
+            used, limit = self._context_usage
+            status.append("· contexte ")
+            status.append(
+                f"{format_tokens(used)} / {format_tokens(limit)} tokens "
+                f"({round(100 * used / limit)} %)",
+                style=self.context_style,
+            )
+        self.query_one("#status", Label).update(status)
+
+    def start_progress(self) -> None:
+        self._on_ui_thread(
+            self._apply_progress, True, False, "L'agent traite votre demande"
+        )
+
+    def set_progress_message(self, message: str) -> None:
+        self._on_ui_thread(self._apply_progress_message, message)
+
+    def pause_progress(self) -> None:
+        self._on_ui_thread(self._apply_pause, True)
+
+    def resume_progress(self) -> None:
+        self._on_ui_thread(self._apply_pause, False)
+
+    def stop_progress(self) -> None:
+        self._on_ui_thread(self._apply_progress, False, False, "")
+
+    def _apply_progress(self, active: bool, paused: bool, message: str) -> None:
+        if active:
+            self._progress_started = perf_counter()
+            self._progress_message = message
+        self._progress_active = active
+        self._progress_paused = paused
+        self._draw_progress()
+
+    def _apply_progress_message(self, message: str) -> None:
+        self._progress_message = message
+
+    def _apply_pause(self, paused: bool) -> None:
+        self._progress_paused = paused
+        self._draw_progress()
+
+    def _draw_progress(self) -> None:
+        label = self.query_one("#progress", Label)
+        label.display = self._progress_active and not self._progress_paused
+        if label.display:
+            frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+            elapsed = format_duration(perf_counter() - self._progress_started)
+            label.update(
+                f"{frames[self._progress_frame % len(frames)]} "
+                f"{self._progress_message} ({elapsed})..."
+            )
+
+    def _advance_spinner(self) -> None:
+        self._progress_frame += 1
+        if self._progress_active and not self._progress_paused:
+            self._draw_progress()
 
     def _ask(self, question: str) -> bool:
         """Pose la question et attend la réponse ; appelé depuis le thread de travail."""
