@@ -19,7 +19,12 @@ from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.styles import Style
 
-from iacli.domain.commands import InputKind, SlashCommand, parse_input
+from iacli.domain.commands import (
+    InputKind,
+    SlashCommand,
+    parse_input,
+    resolve_enter,
+)
 from iacli.domain.status import PromptStatus, context_level, format_tokens
 
 STYLE = Style.from_dict(
@@ -116,20 +121,6 @@ def render_toolbar(status: PromptStatus) -> StyleAndTextTuples:
         )
         tokens.append(("", " "))
     return tokens
-
-
-def resolve_enter(text: str) -> tuple[str, bool]:
-    """Effet d'Entrée sur `text` : (nouveau texte, True pour envoyer le message).
-
-    Les barres obliques inverses en fin de texte vont par paires : chaque paire donne une barre
-    littérale ; si une barre reste seule, elle demande de continuer sur la ligne suivante."""
-    backslash = "\\"
-    trailing = len(text) - len(text.rstrip(backslash))
-    body = text[: len(text) - trailing]
-    literal = backslash * (trailing // 2)
-    if trailing % 2:
-        return body + literal + "\n", False
-    return body + literal, True
 
 
 def _key_bindings() -> KeyBindings:

@@ -60,3 +60,17 @@ def parse_input(text: str) -> ParsedInput:
     if not has_arguments and _COMMAND_WORD.fullmatch(word):
         return ParsedInput(InputKind.UNKNOWN_COMMAND, word)
     return ParsedInput(InputKind.MESSAGE)
+
+
+def resolve_enter(text: str) -> tuple[str, bool]:
+    """Effet d'Entrée sur `text` : (nouveau texte, True pour envoyer le message).
+
+    Les barres obliques inverses en fin de texte vont par paires : chaque paire donne une barre
+    littérale ; si une barre reste seule, elle demande de continuer sur la ligne suivante."""
+    backslash = "\\"
+    trailing = len(text) - len(text.rstrip(backslash))
+    body = text[: len(text) - trailing]
+    literal = backslash * (trailing // 2)
+    if trailing % 2:
+        return body + literal + "\n", False
+    return body + literal, True
