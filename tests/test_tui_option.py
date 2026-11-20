@@ -123,3 +123,15 @@ def test_the_tui_colors_the_diffs(chat_environment, monkeypatch):
     app._presenter.confirm_file_write("a.txt", "+ajout")
 
     assert chr(27) + "[" in "".join(lines)
+
+
+def test_the_tui_leaves_the_mouse_to_the_terminal_so_the_text_can_be_selected():
+    calls = []
+
+    class App:
+        def run(self, **options):
+            calls.append(options)
+
+    cli.run_tui(App())
+
+    assert calls == [{"inline": True, "mouse": False}]

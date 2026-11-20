@@ -173,7 +173,8 @@ def create_tui_app(
 
 def run_tui(app: "ChatApp") -> None:
     """Lance l'application Textual en mode en ligne : le défilement du terminal est conservé."""
-    app.run(inline=True)
+    # Sans capture de la souris, la sélection et le copier-coller restent ceux du terminal.
+    app.run(inline=True, mouse=False)
 
 
 def create_chat_presenter(history_path: Path | None) -> CliChatPresenter:
