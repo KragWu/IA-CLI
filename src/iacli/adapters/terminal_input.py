@@ -22,6 +22,7 @@ from prompt_toolkit.styles import Style
 from iacli.domain.commands import (
     InputKind,
     SlashCommand,
+    matching_commands,
     parse_input,
     resolve_enter,
 )
@@ -50,15 +51,12 @@ class SlashCommandCompleter(Completer):
         self, document: Document, complete_event: CompleteEvent
     ) -> Iterable[Completion]:
         text = document.text_before_cursor
-        if not text.startswith("/") or any(char.isspace() for char in text):
-            return
-        for command in self._commands:
-            if command.name.startswith(text.casefold()):
-                yield Completion(
-                    command.name,
-                    start_position=-len(text),
-                    display_meta=command.description,
-                )
+        for command in matching_commands(text, self._commands):
+            yield Completion(
+                command.name,
+                start_position=-len(text),
+                display_meta=command.description,
+            )
 
 
 class SlashCommandLexer(Lexer):

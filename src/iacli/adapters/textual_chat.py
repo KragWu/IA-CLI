@@ -14,12 +14,21 @@ from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.widgets import Input, Label, RichLog
+from textual.message import Message
+from textual.widgets import Label, RichLog, TextArea
 
-from iacli.domain.commands import SlashCommand
+from iacli.domain.commands import (
+    COMMANDS,
+    SlashCommand,
+    common_prefix,
+    matching_commands,
+    resolve_enter,
+)
+from iacli.domain.history import InputHistory
 from iacli.domain.status import context_level, format_duration, format_tokens
 from iacli.domain.text import neutralize_control_characters as safe
 from iacli.services.chat import ChatSession
+from iacli.services.ports import HistoryStore
 
 RESPONSE_PREFIX = "iacli> "
 
@@ -189,6 +198,78 @@ class TextualPresenter:
                 self._screen.resume_progress()
 
 
+class PromptArea(TextArea):
+    """Saisie multiligne. Entrée envoie (une barre oblique inverse en fin de ligne continue sur
+    la suivante) ; Ctrl+J ou Maj+Entrée passent à la ligne ; Tab complète les slash-commands ;
+    les flèches haut et bas parcourent l'historique depuis la première et la dernière ligne."""
+
+    class Submitted(Message):
+        def __init__(self, text: str) -> None:
+            super().__init__()
+            self.text = text
+
+    def __init__(self, *, id: str, placeholder: str) -> None:
+        super().__init__(
+            id=id,
+            placeholder=placeholder,
+            soft_wrap=True,
+            show_line_numbers=False,
+            tab_behavior="focus",
+            highlight_cursor_line=False,
+        )
+        self.input_history = InputHistory()
+
+    def _show_hint(self, text: str) -> None:
+        hint = self.app.query_one("#hint", Label)
+        hint.update(text)
+        hint.display = bool(text)
+
+    def _replace(self, text: str) -> None:
+        self.text = text
+        self.move_cursor(self.document.end)
+
+    async def _on_key(self, event: events.Key) -> None:
+        key = event.key
+        if key != "tab":
+            self._show_hint("")
+        if key == "enter":
+            self._handled(event)
+            text, submit = resolve_enter(self.text)
+            if text != self.text:
+                self._replace(text)
+            if submit:
+                self.post_message(self.Submitted(self.text))
+        elif key in {"ctrl+j", "shift+enter"}:
+            self._handled(event)
+            self.insert("\n")
+        elif key == "tab":
+            self._handled(event)
+            self._complete()
+        elif key == "up" and self.cursor_location[0] == 0:
+            self._handled(event)
+            self._browse(self.input_history.previous(self.text))
+        elif key == "down" and self.cursor_location[0] == self.document.line_count - 1:
+            self._handled(event)
+            self._browse(self.input_history.next())
+
+    @staticmethod
+    def _handled(event: events.Key) -> None:
+        event.stop()
+        event.prevent_default()
+
+    def _browse(self, text: str | None) -> None:
+        if text is not None:
+            self._replace(text)
+
+    def _complete(self) -> None:
+        matches = matching_commands(self.text, COMMANDS)
+        if not matches:
+            return
+        names = [command.name for command in matches]
+        self._replace(common_prefix(names))
+        self._show_hint("  ".join(names) if len(names) > 1 else "")
+
+
 class ChatApp(App[None]):
     """Conversation dans le terminal, en mode en ligne.
 
@@ -199,6 +280,8 @@ class ChatApp(App[None]):
     CSS = """
     #question { display: none; text-style: bold; color: yellow; }
     #progress { display: none; }
+    #hint { display: none; color: $text-muted; }
+    #prompt { height: auto; max-height: 8; border: none; padding: 0; }
     #status { background: $panel; }
     """
 
@@ -212,8 +295,10 @@ class ChatApp(App[None]):
         create_session: Callable[[TextualPresenter], ChatSession],
         render_markdown: Callable[[str], str] | None = None,
         render_diff: Callable[[str], str] | None = None,
+        history: HistoryStore | None = None,
     ) -> None:
         super().__init__()
+        self._history_store = history
         self._pending_answer: Callable[[bool], None] | None = None
         self._model_name = ""
         self._context_usage: tuple[int, int] | None = None
@@ -238,7 +323,8 @@ class ChatApp(App[None]):
         yield RichLog(id="log", wrap=True, markup=False, highlight=False)
         yield Label(id="progress")
         yield Label(id="question")
-        yield Input(id="prompt", placeholder="vous> ")
+        yield Label(id="hint")
+        yield PromptArea(id="prompt", placeholder="vous> ")
         yield Label(id="status")
 
     def on_mount(self) -> None:
@@ -246,7 +332,10 @@ class ChatApp(App[None]):
         self.set_interval(0.1, self._advance_spinner)
         self._session.start()
         self._draw_status()
-        self.query_one("#prompt", Input).focus()
+        prompt = self.query_one("#prompt", PromptArea)
+        if self._history_store is not None:
+            prompt.input_history = InputHistory(self._history_store.load())
+        prompt.focus()
 
     def _emit(self, line: str) -> None:
         """Ajoute une ligne au journal, depuis n'importe quel thread."""
@@ -263,13 +352,16 @@ class ChatApp(App[None]):
             Text.from_ansi(line) if chr(27) in line else line
         )
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value
-        event.input.value = ""
+    def on_prompt_area_submitted(self, event: PromptArea.Submitted) -> None:
+        text = event.text
+        prompt = self.query_one("#prompt", PromptArea)
+        prompt.clear()
         if self._busy or not text.strip():
             return
+        if prompt.input_history.add(text) and self._history_store is not None:
+            self._history_store.append(text)
         self._busy = True
-        event.input.disabled = True
+        prompt.disabled = True
         self._write(f"vous> {safe(text)}")
         self.run_worker(lambda: self._handle(text), thread=True)
 
@@ -282,7 +374,7 @@ class ChatApp(App[None]):
         if not keep_going:
             self.exit()
             return
-        prompt = self.query_one("#prompt", Input)
+        prompt = self.query_one("#prompt", PromptArea)
         prompt.disabled = False
         prompt.focus()
 
