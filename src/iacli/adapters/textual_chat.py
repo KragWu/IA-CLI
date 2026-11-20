@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.screen import ModalScreen
 from textual.widgets import Input, Label, RichLog
 
 from iacli.domain.commands import SlashCommand
@@ -150,32 +150,16 @@ class TextualPresenter:
         return self._ask(question)
 
 
-class ConfirmationScreen(ModalScreen[bool]):
-    """Question fermée posée pendant qu'un outil attend : `o` ou `y` accepte, tout le reste
-    refuse (refus par défaut, comme la console)."""
-
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("o,y", "answer(True)", "Oui"),
-        Binding("n,enter,escape", "answer(False)", "Non"),
-    ]
-
-    def __init__(self, question: str) -> None:
-        super().__init__(id="confirmation")
-        self._question = question
-
-    def compose(self) -> ComposeResult:
-        yield Label(safe(self._question))
-
-    def action_answer(self, accepted: bool) -> None:
-        self.dismiss(accepted)
-
-
 class ChatApp(App[None]):
     """Conversation dans le terminal, en mode en ligne.
 
     `ChatSession.handle` tourne dans un thread de travail : l'interface reste réactive et le
     presenter lui renvoie chaque ligne par `call_from_thread`. Ctrl+C annule le tour en cours,
     et quitte immédiatement quand aucun tour n'est en cours ; Ctrl+D quitte toujours."""
+
+    CSS = """
+    #question { display: none; text-style: bold; color: yellow; }
+    """
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+c", "interrupt", "Annuler ou quitter", priority=True),
@@ -189,7 +173,7 @@ class ChatApp(App[None]):
         render_diff: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__()
-        self._confirmation: ConfirmationScreen | None = None
+        self._pending_answer: Callable[[bool], None] | None = None
         self.transcript: list[str] = []
         self._busy = False
         self._ui_thread = threading.get_ident()
@@ -203,6 +187,7 @@ class ChatApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="log", wrap=True, markup=False, highlight=False)
+        yield Label(id="question")
         yield Input(id="prompt", placeholder="vous> ")
 
     def on_mount(self) -> None:
@@ -253,25 +238,42 @@ class ChatApp(App[None]):
         answered = threading.Event()
         answer: list[bool] = []
 
-        def finish(accepted: bool | None) -> None:
-            answer.append(bool(accepted))
+        def finish(accepted: bool) -> None:
+            answer.append(accepted)
             answered.set()
 
-        self.call_from_thread(self._open_confirmation, question, finish)
+        self.call_from_thread(self._open_question, question, finish)
         answered.wait()
         return answer[0]
 
-    def _open_confirmation(
-        self, question: str, finish: Callable[[bool | None], None]
-    ) -> None:
-        screen = ConfirmationScreen(question)
-        self._confirmation = screen
-        self.push_screen(screen, finish)
+    def _open_question(self, question: str, finish: Callable[[bool], None]) -> None:
+        """Affiche la question au-dessus de la saisie, qui est désactivée pendant le tour."""
+        label = self.query_one("#question", Label)
+        label.update(safe(question))
+        label.display = True
+        self._pending_answer = finish
+
+    def _answer(self, accepted: bool) -> None:
+        finish, self._pending_answer = self._pending_answer, None
+        self.query_one("#question", Label).display = False
+        if finish is not None:
+            finish(accepted)
+
+    def on_key(self, event: events.Key) -> None:
+        """Pendant une question : `o` ou `y` accepte, `n`, Entrée ou Échap refuse (refus par
+        défaut) ; les autres touches sont ignorées."""
+        if self._pending_answer is None:
+            return
+        event.stop()
+        event.prevent_default()
+        if event.key in {"o", "y"}:
+            self._answer(True)
+        elif event.key in {"n", "enter", "escape"}:
+            self._answer(False)
 
     def _refuse_confirmation(self) -> None:
-        if self._confirmation is not None and self._confirmation.is_attached:
-            self._confirmation.dismiss(False)
-        self._confirmation = None
+        if self._pending_answer is not None:
+            self._answer(False)
 
     def action_interrupt(self) -> None:
         self._refuse_confirmation()

@@ -192,7 +192,7 @@ WRITE_CALL = AIMessage(
 async def _wait_for_confirmation(app, pilot):
     for _ in range(100):
         await pilot.pause(0.05)
-        if app.screen.id == "confirmation":
+        if app.query_one("#question").display:
             return
     raise AssertionError("aucune confirmation affichée")
 
@@ -208,7 +208,7 @@ async def _answer_write(tmp_path, *keys):
         await pilot.press(*keys)
         await app.workers.wait_for_complete()
         await pilot.pause()
-        assert app.screen.id != "confirmation"
+        assert not app.query_one("#question").display
         assert not app.query_one("#prompt").disabled
         return app
 
@@ -231,3 +231,20 @@ def test_ctrl_c_during_a_confirmation_refuses_and_cancels_the_turn(tmp_path):
 
     assert not (tmp_path / "a.txt").exists()
     assert "Génération annulée" in app.transcript
+
+
+def test_the_question_stays_displayed_until_a_valid_answer(tmp_path):
+    async def scenario():
+        model = FakeChatModel([WRITE_CALL, AIMessage(content="fini")])
+        app = _app(tmp_path, model)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press(*"ecris", "enter")
+            await _wait_for_confirmation(app, pilot)
+            await pilot.press("x", "a")
+
+            assert app.query_one("#question").display
+            await pilot.press("n")
+            await app.workers.wait_for_complete()
+
+    asyncio.run(scenario())

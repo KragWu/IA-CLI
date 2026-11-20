@@ -111,7 +111,7 @@ du terminal est conservé. Elle exige un terminal interactif (pas de tube ni de 
 cours, ou quitte immédiatement s'il n'y en a pas ; `Ctrl+D` quitte toujours. La souris n'est pas capturée : la sélection et le copier-coller sont ceux de votre terminal.
 
 Les réponses sont rendues en markdown et les diffs sont colorés. Une écriture de fichier ou une commande shell affiche
-le diff ou la commande, puis pose la question dans une fenêtre : `o` ou `y` accepte, `n`, `Entrée` ou `Échap` refuse
+le diff ou la commande, puis pose la question au-dessus de la saisie : `o` ou `y` accepte, `n`, `Entrée` ou `Échap` refuse
 (refus par défaut) ; `Ctrl+C` pendant la question refuse et annule le tour.
 
 Ce prototype n'a pas encore l'indicateur animé, la barre d'état, la saisie multiligne ni l'historique.
