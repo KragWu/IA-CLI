@@ -110,9 +110,11 @@ disque.
 du terminal est conservé. Elle exige un terminal interactif (pas de tube ni de fichier). `Ctrl+C` annule le tour en
 cours, ou quitte immédiatement s'il n'y en a pas ; `Ctrl+D` quitte toujours.
 
-Ce prototype n'a pas encore les confirmations, l'indicateur animé, la barre d'état, le rendu markdown, la saisie
-multiligne ni l'historique : les écritures de fichiers et les commandes shell y sont **refusées** (utilisez l'interface
-par défaut pour elles).
+Les réponses sont rendues en markdown et les diffs sont colorés. Une écriture de fichier ou une commande shell affiche
+le diff ou la commande, puis pose la question dans une fenêtre : `o` ou `y` accepte, `n`, `Entrée` ou `Échap` refuse
+(refus par défaut) ; `Ctrl+C` pendant la question refuse et annule le tour.
+
+Ce prototype n'a pas encore l'indicateur animé, la barre d'état, la saisie multiligne ni l'historique.
 
 ### Les outils de l'agent
 

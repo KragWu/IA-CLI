@@ -175,3 +175,59 @@ def test_ansi_lines_are_displayed_as_styled_text_without_escape_codes(tmp_path):
             assert chr(27) not in rendered
 
     _run(scenario)
+
+
+WRITE_CALL = AIMessage(
+    content="",
+    tool_calls=[
+        {
+            "name": "write_file",
+            "args": {"path": "a.txt", "content": "salut"},
+            "id": "w1",
+        }
+    ],
+)
+
+
+async def _wait_for_confirmation(app, pilot):
+    for _ in range(100):
+        await pilot.pause(0.05)
+        if app.screen.id == "confirmation":
+            return
+    raise AssertionError("aucune confirmation affichée")
+
+
+async def _answer_write(tmp_path, *keys):
+    model = FakeChatModel([WRITE_CALL, AIMessage(content="fini")])
+    app = _app(tmp_path, model)
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt")
+        await pilot.press(*"ecris", "enter")
+        await _wait_for_confirmation(app, pilot)
+        assert "Modification proposée pour a.txt" in _transcript(app)
+        await pilot.press(*keys)
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert app.screen.id != "confirmation"
+        assert not app.query_one("#prompt").disabled
+        return app
+
+
+def test_a_file_write_is_applied_after_the_user_confirms(tmp_path):
+    asyncio.run(_answer_write(tmp_path, "o"))
+
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "salut"
+
+
+def test_a_file_write_is_refused_by_default(tmp_path):
+    for keys in (("n",), ("enter",), ("escape",)):
+        asyncio.run(_answer_write(tmp_path, *keys))
+
+        assert not (tmp_path / "a.txt").exists()
+
+
+def test_ctrl_c_during_a_confirmation_refuses_and_cancels_the_turn(tmp_path):
+    app = asyncio.run(_answer_write(tmp_path, "ctrl+c"))
+
+    assert not (tmp_path / "a.txt").exists()
+    assert "Génération annulée" in app.transcript

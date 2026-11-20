@@ -106,3 +106,20 @@ def test_the_tui_renders_responses_as_markdown(chat_environment, monkeypatch):
     app._presenter.show_response("**gras**")
 
     assert chr(27) + "[1m" in "".join(lines)
+
+
+def test_the_tui_colors_the_diffs(chat_environment, monkeypatch):
+    started = []
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    monkeypatch.setattr(cli, "run_tui", lambda app: started.append(app))
+
+    handle_chat(Namespace(config_dir=chat_environment, tui=True))
+
+    (app,) = started
+    lines = []
+    app._presenter._emit = lines.append
+    app._presenter._ask = lambda question: True
+    app._presenter.confirm_file_write("a.txt", "+ajout")
+
+    assert chr(27) + "[" in "".join(lines)
