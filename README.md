@@ -108,7 +108,7 @@ disque.
 
 `iacli --tui` (ou `iacli chat --tui`) lance le chat dans une interface Textual, en mode « en ligne » : le défilement
 du terminal est conservé. Elle exige un terminal interactif (pas de tube ni de fichier). `Ctrl+C` annule le tour en
-cours, ou quitte immédiatement s'il n'y en a pas ; `Ctrl+D` quitte toujours. La souris n'est pas capturée : la sélection et le copier-coller sont ceux de votre terminal.
+cours, ou quitte immédiatement s'il n'y en a pas (un second `Ctrl+C` pendant une annulation qui tarde quitte aussi, sans attendre le modèle) ; `Ctrl+D` quitte toujours. La souris n'est pas capturée : la sélection et le copier-coller sont ceux de votre terminal.
 
 Les réponses sont rendues en markdown et les diffs sont colorés. Une écriture de fichier ou une commande shell affiche
 le diff ou la commande, puis pose la question au-dessus de la saisie : `o` ou `y` accepte, `n`, `Entrée` ou `Échap` refuse

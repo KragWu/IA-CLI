@@ -1,5 +1,6 @@
 import asyncio
 import threading
+import time
 
 from langchain_core.messages import AIMessage
 
@@ -35,10 +36,17 @@ def _transcript(app):
     return "\n".join(app.transcript)
 
 
+async def _settled(app):
+    """Attend la fin du tour en cours (thread de travail de l'application)."""
+    thread = app._turn_thread
+    if thread is not None:
+        await asyncio.to_thread(thread.join, 10)
+
+
 async def _send(app, pilot, text):
     await pilot.click("#prompt")
     await pilot.press(*text, "enter")
-    await app.workers.wait_for_complete()
+    await _settled(app)
     await pilot.pause()
 
 
@@ -106,7 +114,7 @@ def test_the_interface_stays_responsive_while_the_model_is_working(tmp_path):
             assert app.query_one("#prompt").disabled
 
             release.set()
-            await app.workers.wait_for_complete()
+            await _settled(app)
             await pilot.pause()
             assert not app.query_one("#prompt").disabled
 
@@ -130,7 +138,7 @@ def test_ctrl_c_during_a_turn_cancels_it_without_leaving_the_app(tmp_path):
             await pilot.pause()
             await pilot.press("ctrl+c")
             release.set()
-            await app.workers.wait_for_complete()
+            await _settled(app)
             await pilot.pause()
 
             assert "Génération annulée" in app.transcript
@@ -206,7 +214,7 @@ async def _answer_write(tmp_path, *keys):
         await _wait_for_confirmation(app, pilot)
         assert "Modification proposée pour a.txt" in _transcript(app)
         await pilot.press(*keys)
-        await app.workers.wait_for_complete()
+        await _settled(app)
         await pilot.pause()
         assert not app.query_one("#question").display
         assert not app.query_one("#prompt").disabled
@@ -245,7 +253,7 @@ def test_the_question_stays_displayed_until_a_valid_answer(tmp_path):
 
             assert app.query_one("#question").display
             await pilot.press("n")
-            await app.workers.wait_for_complete()
+            await _settled(app)
 
     asyncio.run(scenario())
 
@@ -298,7 +306,7 @@ def test_the_progress_indicator_is_shown_during_a_turn_and_hidden_after(tmp_path
             assert "L'agent traite votre demande" in _text_of(app, "#progress")
 
             release.set()
-            await app.workers.wait_for_complete()
+            await _settled(app)
             await pilot.pause()
             assert not app.query_one("#progress").display
 
@@ -341,7 +349,7 @@ def test_a_trailing_backslash_continues_on_the_next_line_instead_of_sending(tmp_
             assert not any(line.startswith("vous>") for line in app.transcript)
 
             await pilot.press("enter")
-            await app.workers.wait_for_complete()
+            await _settled(app)
             assert "vous> a" + chr(10) + "b" in app.transcript
 
     _run(scenario)
@@ -446,3 +454,59 @@ def test_sent_messages_are_saved_and_the_saved_history_is_browsable(tmp_path):
             assert store.entries == ["ancien", "nouveau"]
 
     _run(scenario)
+
+
+def test_quitting_does_not_wait_for_a_model_call_in_progress(tmp_path):
+    release = threading.Event()
+
+    class BlockedModel(FakeChatModel):
+        def invoke(self, messages):
+            release.wait(30)
+            return super().invoke(messages)
+
+    async def scenario():
+        app = _app(tmp_path, BlockedModel())
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press(*"bloque", "enter")
+            await pilot.pause(0.2)
+            await pilot.press("ctrl+d")
+            await pilot.pause()
+            assert not app.is_running
+
+    started = time.perf_counter()
+    try:
+        asyncio.run(scenario())
+        elapsed = time.perf_counter() - started
+    finally:
+        release.set()
+
+    assert elapsed < 5
+
+
+def test_a_second_ctrl_c_during_a_cancelling_turn_quits(tmp_path):
+    release = threading.Event()
+
+    class BlockedModel(FakeChatModel):
+        def invoke(self, messages):
+            release.wait(30)
+            return super().invoke(messages)
+
+    async def scenario():
+        app = _app(tmp_path, BlockedModel())
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press(*"bloque", "enter")
+            await pilot.pause(0.2)
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert app.is_running
+
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert not app.is_running
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
