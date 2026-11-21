@@ -301,6 +301,7 @@ class ChatApp(App[None]):
         self._history_store = history
         self._turn_thread: threading.Thread | None = None
         self._cancel_requested = False
+        self._turn_id = 0
         self._pending_answer: Callable[[bool], None] | None = None
         self._model_name = ""
         self._context_usage: tuple[int, int] | None = None
@@ -363,6 +364,7 @@ class ChatApp(App[None]):
         if prompt.input_history.add(text) and self._history_store is not None:
             self._history_store.append(text)
         self._busy = True
+        self._turn_id += 1
         prompt.disabled = True
         self._write(f"vous> {safe(text)}")
         # Thread daemon : un appel du modèle en cours ne retient pas la fermeture de l'application
@@ -531,13 +533,19 @@ class ChatApp(App[None]):
         if self._pending_answer is not None:
             self._answer(False)
 
+    def _apply_cancel(self, turn_id: int) -> None:
+        """Transmet l'annulation à la session ; si le thread du tour n'est pas encore entré dans
+        `handle` (Ctrl+C juste après Entrée), réessaie tant que ce même tour est en cours."""
+        if self._busy and turn_id == self._turn_id and not self._session.cancel():
+            self.set_timer(0.02, lambda: self._apply_cancel(turn_id))
+
     def action_interrupt(self) -> None:
         """Annule le tour en cours ; un second Ctrl+C, quand l'annulation tarde (appel du
         modèle non interruptible), ou un Ctrl+C sans tour en cours quitte."""
         self._refuse_confirmation()
         if self._busy and not self._cancel_requested:
             self._cancel_requested = True
-            self._session.cancel()
+            self._apply_cancel(self._turn_id)
         else:
             self.exit()
 

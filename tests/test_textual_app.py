@@ -510,3 +510,38 @@ def test_a_second_ctrl_c_during_a_cancelling_turn_quits(tmp_path):
         asyncio.run(scenario())
     finally:
         release.set()
+
+
+def test_a_ctrl_c_pressed_before_the_turn_has_started_is_not_lost(tmp_path):
+    release = threading.Event()
+
+    class SlowModel(FakeChatModel):
+        def invoke(self, messages):
+            release.wait(5)
+            return TOOL_CALL
+
+    async def scenario():
+        app = _app(tmp_path, SlowModel())
+        real_handle = app._session.handle
+
+        def late_handle(text):
+            time.sleep(0.4)  # le thread de travail n'est pas encore entré dans `handle`
+            return real_handle(text)
+
+        app._session.handle = late_handle
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press(*"vite", "enter")
+            await pilot.press("ctrl+c")
+            await pilot.pause(0.8)
+            release.set()
+            await _settled(app)
+            await pilot.pause()
+
+            assert "Génération annulée" in app.transcript
+            assert app.is_running
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()

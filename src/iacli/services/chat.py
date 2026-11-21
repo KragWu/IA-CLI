@@ -125,15 +125,17 @@ class ChatSession:
         """Affiche l'en-tête de la conversation."""
         self._presenter.start(self._workspace, self._model_name)
 
-    def cancel(self) -> None:
+    def cancel(self) -> bool:
         """Demande l'arrêt du tour en cours, à la prochaine étape du graphe.
 
-        Utilisable depuis n'importe quel thread ; sans effet quand aucune saisie n'est en cours
-        de traitement (`handle`). Un appel déjà lancé (modèle, commande shell) n'est pas
-        interrompu de force."""
+        Utilisable depuis n'importe quel thread ; sans effet (et renvoie False) quand aucune
+        saisie n'est en cours de traitement (`handle`) : l'appelant peut réessayer si son thread
+        de travail n'est pas encore entré dans `handle`. Un appel déjà lancé (modèle, commande
+        shell) n'est pas interrompu de force."""
         with self._state_lock:
             if self._handling:
                 self._cancel_requested.set()
+            return self._handling
 
     def handle(self, user_input: str) -> bool:
         """Traite une saisie (message ou slash-command) ; False quand la session doit se terminer."""
