@@ -51,7 +51,7 @@ def parse_entries(content: str) -> list[str]:
     """Messages d'un fichier d'historique, du plus ancien au plus récent."""
     entries: list[list[str]] = []
     current: list[str] | None = None
-    for line in content.splitlines():
+    for line in content.replace(chr(13) + chr(10), chr(10)).split(chr(10)):
         if line.startswith("+"):
             if current is None:
                 current = []
