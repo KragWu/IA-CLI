@@ -81,3 +81,10 @@ def test_the_store_never_fails_on_an_unusable_path(tmp_path):
     store.append("un")
 
     assert store.load() == []
+
+
+def test_exotic_line_separators_stay_inside_a_reloaded_entry():
+    entries = ["a" + chr(0x2028) + "b", "c" + chr(12) + "d", "e" + chr(0x85) + "f"]
+    content = "".join(format_entry(entry, "2026-01-01 10:00:00") for entry in entries)
+
+    assert parse_entries(content) == entries
