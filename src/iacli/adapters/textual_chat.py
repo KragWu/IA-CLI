@@ -299,6 +299,8 @@ class ChatApp(App[None]):
     ) -> None:
         super().__init__()
         self._history_store = history
+        self._turn_thread: threading.Thread | None = None
+        self._cancel_requested = False
         self._pending_answer: Callable[[bool], None] | None = None
         self._model_name = ""
         self._context_usage: tuple[int, int] | None = None
@@ -342,7 +344,7 @@ class ChatApp(App[None]):
         if threading.get_ident() == self._ui_thread:
             self._write(line)
         else:
-            self.call_from_thread(self._write, line)
+            self._call_ui(self._write, line)
 
     def _write(self, line: str) -> None:
         self.transcript.append(line)
@@ -363,14 +365,31 @@ class ChatApp(App[None]):
         self._busy = True
         prompt.disabled = True
         self._write(f"vous> {safe(text)}")
-        self.run_worker(lambda: self._handle(text), thread=True)
+        # Thread daemon : un appel du modèle en cours ne retient pas la fermeture de l'application
+        # (un worker Textual, lui, la ferait attendre la fin de l'appel).
+        self._turn_thread = threading.Thread(
+            target=self._handle, args=(text,), daemon=True
+        )
+        self._turn_thread.start()
+
+    def _call_ui(self, function: Callable[..., Any], *args: Any) -> bool:
+        """Exécute `function` dans le thread de l'interface ; False si l'application est fermée
+        (le tour qui finit après la sortie n'a plus rien à afficher)."""
+        if not self.is_running:
+            return False
+        try:
+            self.call_from_thread(function, *args)
+        except RuntimeError:
+            return False
+        return True
 
     def _handle(self, text: str) -> None:
         keep_going = self._session.handle(text)
-        self.call_from_thread(self._turn_finished, keep_going)
+        self._call_ui(self._turn_finished, keep_going)
 
     def _turn_finished(self, keep_going: bool) -> None:
         self._busy = False
+        self._cancel_requested = False
         if not keep_going:
             self.exit()
             return
@@ -385,7 +404,7 @@ class ChatApp(App[None]):
         if threading.get_ident() == self._ui_thread:
             function(*args)
         else:
-            self.call_from_thread(function, *args)
+            self._call_ui(function, *args)
 
     def set_model(self, model: str) -> None:
         self._on_ui_thread(self._apply_model, model)
@@ -478,7 +497,8 @@ class ChatApp(App[None]):
             answer.append(accepted)
             answered.set()
 
-        self.call_from_thread(self._open_question, question, finish)
+        if not self._call_ui(self._open_question, question, finish):
+            return False
         answered.wait()
         return answer[0]
 
@@ -512,8 +532,11 @@ class ChatApp(App[None]):
             self._answer(False)
 
     def action_interrupt(self) -> None:
+        """Annule le tour en cours ; un second Ctrl+C, quand l'annulation tarde (appel du
+        modèle non interruptible), ou un Ctrl+C sans tour en cours quitte."""
         self._refuse_confirmation()
-        if self._busy:
+        if self._busy and not self._cancel_requested:
+            self._cancel_requested = True
             self._session.cancel()
         else:
             self.exit()
