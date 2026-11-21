@@ -545,3 +545,26 @@ def test_a_ctrl_c_pressed_before_the_turn_has_started_is_not_lost(tmp_path):
         asyncio.run(scenario())
     finally:
         release.set()
+
+
+def test_an_unexpected_failure_in_a_turn_shows_the_error_and_unlocks_the_prompt(
+    tmp_path,
+):
+    async def scenario():
+        app = _app(tmp_path)
+
+        def failing(text):
+            raise RuntimeError("panne inattendue")
+
+        app._session.handle = failing
+        async with app.run_test() as pilot:
+            await _send(app, pilot, "bonjour")
+
+            assert any(
+                line.startswith("erreur>") and "panne inattendue" in line
+                for line in app.transcript
+            )
+            assert not app.query_one("#prompt").disabled
+            assert app.is_running
+
+    _run(scenario)

@@ -386,8 +386,15 @@ class ChatApp(App[None]):
         return True
 
     def _handle(self, text: str) -> None:
-        keep_going = self._session.handle(text)
-        self._call_ui(self._turn_finished, keep_going)
+        keep_going = True
+        try:
+            keep_going = self._session.handle(text)
+        except Exception as error:
+            # Défaillance que la session n'a pas traitée : on la montre et on rend la main,
+            # sinon la saisie resterait désactivée.
+            self._presenter.show_error(str(error) or type(error).__name__)
+        finally:
+            self._call_ui(self._turn_finished, keep_going)
 
     def _turn_finished(self, keep_going: bool) -> None:
         self._busy = False
