@@ -531,9 +531,10 @@ class ChatApp(App[None]):
             return
         event.stop()
         event.prevent_default()
-        if event.key in {"o", "y"}:
+        key = event.key.lower()  # Verrouillage majuscules ou Maj : `O` vaut `o`
+        if key in {"o", "y"}:
             self._answer(True)
-        elif event.key in {"n", "enter", "escape"}:
+        elif key in {"n", "enter", "escape"}:
             self._answer(False)
 
     def _refuse_confirmation(self) -> None:

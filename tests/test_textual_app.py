@@ -568,3 +568,9 @@ def test_an_unexpected_failure_in_a_turn_shows_the_error_and_unlocks_the_prompt(
             assert app.is_running
 
     _run(scenario)
+
+
+def test_the_confirmation_accepts_capital_letters_too(tmp_path):
+    asyncio.run(_answer_write(tmp_path, "O"))
+
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "salut"
