@@ -299,3 +299,19 @@ def test_a_cancelled_turn_keeps_the_tools_already_run_in_the_history(tmp_path):
         "ToolMessage",
         "HumanMessage",
     ]
+
+
+def test_cancel_tells_whether_it_took_effect(tmp_path):
+    results = []
+
+    class SpyModel(FakeChatModel):
+        def invoke(self, messages):
+            results.append(session.cancel())
+            return super().invoke(messages)
+
+    session, _ = _session(tmp_path, SpyModel())
+
+    assert session.cancel() is False
+    session.handle("bonjour")
+
+    assert results == [True]
