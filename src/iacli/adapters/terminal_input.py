@@ -26,7 +26,12 @@ from iacli.domain.commands import (
     parse_input,
     resolve_enter,
 )
-from iacli.domain.status import PromptStatus, context_level, format_tokens
+from iacli.domain.status import (
+    PromptStatus,
+    context_level,
+    context_percent,
+    format_tokens,
+)
 
 STYLE = Style.from_dict(
     {
@@ -114,7 +119,7 @@ def render_toolbar(status: PromptStatus) -> StyleAndTextTuples:
         tokens.append(
             (
                 style,
-                f"{used} / {limit} tokens ({round(100 * status.context_used / status.context_limit)} %)",
+                f"{used} / {limit} tokens ({context_percent(status.context_used, status.context_limit)} %)",
             )
         )
         tokens.append(("", " "))

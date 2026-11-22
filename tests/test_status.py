@@ -5,6 +5,7 @@ from iacli.adapters.terminal_input import render_toolbar
 from iacli.domain.status import (
     PromptStatus,
     context_level,
+    context_percent,
     format_duration,
     format_tokens,
 )
@@ -59,3 +60,24 @@ def test_duration_formatter_uses_milliseconds_seconds_minutes_and_hours():
 )
 def test_the_context_level_turns_to_warn_at_60_percent_and_danger_at_80(used, expected):
     assert context_level(used, 100) == expected
+
+
+@pytest.mark.parametrize(
+    ("used", "limit", "expected"),
+    [
+        (500, 1000, 50),
+        (1, 3, 33),
+        (2, 3, 67),
+        (1200, 1000, 120),
+        (0, 1000, 0),
+        (5, 0, 0),
+    ],
+)
+def test_the_context_percent_is_rounded_and_tolerates_a_zero_limit(
+    used, limit, expected
+):
+    assert context_percent(used, limit) == expected
+
+
+def test_the_context_level_tolerates_a_zero_limit():
+    assert context_level(5, 0) == "ok"
