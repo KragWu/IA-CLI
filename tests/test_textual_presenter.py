@@ -295,3 +295,11 @@ def test_the_progress_line_is_kept_in_the_log_without_a_screen():
     presenter.start_progress()
 
     assert lines == ["L'agent traite votre demande..."]
+
+
+def test_a_multiline_response_is_aligned_under_the_prefix_even_without_a_renderer():
+    presenter, lines = _presenter()
+
+    presenter.show_response("un\ndeux")
+
+    assert "iacli> un\n       deux" in "".join(lines)

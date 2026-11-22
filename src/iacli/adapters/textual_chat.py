@@ -3,6 +3,7 @@
 Seul module qui connaît `textual`. Le presenter reçoit une fonction `emit` sûre depuis
 n'importe quel thread (l'application la fournit avec `call_from_thread`)."""
 
+import contextlib
 import json
 import threading
 from collections.abc import Callable, Sequence
@@ -86,14 +87,11 @@ class TextualPresenter:
     def show_response(self, response: str) -> None:
         response = safe(response)
         if self._render_markdown is not None:
-            try:
-                rendered = self._render_markdown(response)
-            except Exception:
-                rendered = (
-                    response  # rendu impossible : le texte brut vaut mieux que rien
-                )
-            # Les lignes suivantes s'alignent sous le texte, après le préfixe.
-            response = rendered.replace("\n", "\n" + " " * len(RESPONSE_PREFIX))
+            # Rendu impossible : le texte brut vaut mieux que rien.
+            with contextlib.suppress(Exception):
+                response = self._render_markdown(response)
+        # Les lignes suivantes s'alignent sous le texte, après le préfixe.
+        response = response.replace("\n", "\n" + " " * len(RESPONSE_PREFIX))
         self._emit(f"\n{RESPONSE_PREFIX}{response}\n")
 
     def show_error(self, message: str) -> None:
