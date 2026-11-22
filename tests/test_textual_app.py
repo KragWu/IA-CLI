@@ -36,6 +36,14 @@ def _transcript(app):
     return "\n".join(app.transcript)
 
 
+async def _wait_for_text(app, pilot, selector, expected):
+    """Attend (au plus 3 s) que le minuteur de l'indicateur ait rafraîchi le texte."""
+    for _ in range(60):
+        await pilot.pause(0.05)
+        if expected in _text_of(app, selector):
+            return
+
+
 async def _settled(app):
     """Attend la fin du tour en cours (thread de travail de l'application)."""
     thread = app._turn_thread
@@ -300,7 +308,7 @@ def test_the_progress_indicator_is_shown_during_a_turn_and_hidden_after(tmp_path
 
             await pilot.click("#prompt")
             await pilot.press(*"lent", "enter")
-            await pilot.pause(0.3)
+            await _wait_for_text(app, pilot, "#progress", "L'agent traite")
 
             assert app.query_one("#progress").display
             assert "L'agent traite votre demande" in _text_of(app, "#progress")
@@ -319,7 +327,7 @@ def test_the_progress_message_can_change_and_the_indicator_pauses(tmp_path):
         async with app.run_test() as pilot:
             app.start_progress()
             app.set_progress_message("lecture de a.txt")
-            await pilot.pause(0.3)
+            await _wait_for_text(app, pilot, "#progress", "lecture de a.txt")
             assert "lecture de a.txt" in _text_of(app, "#progress")
 
             app.pause_progress()
@@ -606,13 +614,13 @@ def test_square_brackets_in_the_texts_are_displayed_literally_not_as_markup(tmp_
         async with app.run_test() as pilot:
             app.start_progress()
             app.set_progress_message("Appel des outils : [/x] [bold]y")
-            await pilot.pause(0.4)
+            await _wait_for_text(app, pilot, "#progress", "[/x] [bold]y")
 
             assert app.is_running
             assert "[/x] [bold]y" in _text_of(app, "#progress")
 
             app._open_question("Appliquer [/x] ? [o/N]", lambda accepted: None)
-            await pilot.pause()
+            await _wait_for_text(app, pilot, "#question", "[/x]")
             assert "[/x]" in _text_of(app, "#question")
 
     _run(scenario)
