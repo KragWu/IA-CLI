@@ -642,3 +642,21 @@ def test_the_arrows_move_inside_a_wrapped_message_before_browsing_the_history(
             assert _prompt_text(app) == long_message
 
     _run(scenario)
+
+
+def test_a_question_opened_after_a_cancellation_is_refused_immediately(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            answers = []
+            app._cancel_requested = (
+                True  # Ctrl+C arrivé avant l'ouverture de la question
+            )
+
+            app._open_question("Appliquer ? [o/N]", answers.append)
+            await pilot.pause()
+
+            assert answers == [False]
+            assert not app.query_one("#question").display
+
+    _run(scenario)

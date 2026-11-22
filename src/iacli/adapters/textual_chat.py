@@ -523,6 +523,10 @@ class ChatApp(App[None]):
 
     def _open_question(self, question: str, finish: Callable[[bool], None]) -> None:
         """Affiche la question au-dessus de la saisie, qui est désactivée pendant le tour."""
+        if self._cancel_requested:
+            # Ctrl+C est arrivé avant l'ouverture de la question : refus, sans l'afficher.
+            finish(False)
+            return
         label = self.query_one("#question", Label)
         label.update(Text(safe(question)))
         label.display = True
