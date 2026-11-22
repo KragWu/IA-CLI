@@ -688,3 +688,35 @@ def test_closing_the_app_by_another_route_refuses_the_pending_confirmation(tmp_p
         assert not (tmp_path / "a.txt").exists()
 
     _run(scenario)
+
+
+def test_closing_the_app_cancels_the_turn_that_is_still_running(tmp_path):
+    release = threading.Event()
+
+    class SlowModel(FakeChatModel):
+        def invoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                release.wait(10)
+                return TOOL_CALL
+            return AIMessage(content="fini")
+
+    async def scenario():
+        model = SlowModel()
+        app = _app(tmp_path, model)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press(*"longue", "enter")
+            await pilot.pause(0.3)
+
+            app.exit()  # Ctrl+Q ou second Ctrl+C : le tour ne doit pas continuer seul
+            await pilot.pause()
+
+        release.set()
+        await asyncio.to_thread(app._turn_thread.join, 5)
+        assert len(model.calls) == 1
+
+    try:
+        _run(scenario)
+    finally:
+        release.set()
