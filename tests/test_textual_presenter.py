@@ -277,3 +277,21 @@ def test_the_model_name_is_forwarded_to_the_screen_when_the_chat_starts():
     presenter.start(Path("projet"), f"qwen{ESC}")
 
     assert screen.calls == [("model", "qwen" + chr(92) + "x1b")]
+
+
+def test_the_progress_line_is_not_repeated_in_the_log_when_a_screen_shows_it():
+    screen = _Screen()
+    lines = []
+    presenter = TextualPresenter(emit=lines.append, screen=screen)
+
+    presenter.start_progress()
+
+    assert lines == []
+
+
+def test_the_progress_line_is_kept_in_the_log_without_a_screen():
+    presenter, lines = _presenter()
+
+    presenter.start_progress()
+
+    assert lines == ["L'agent traite votre demande..."]

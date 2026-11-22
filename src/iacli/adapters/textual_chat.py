@@ -145,8 +145,9 @@ class TextualPresenter:
         )
 
     def start_progress(self) -> None:
-        self._emit("L'agent traite votre demande...")
-        if self._screen is not None:
+        if self._screen is None:
+            self._emit("L'agent traite votre demande...")
+        else:  # l'indicateur animé affiche déjà ce message
             self._screen.start_progress()
 
     def update_progress(self, message: str) -> None:
