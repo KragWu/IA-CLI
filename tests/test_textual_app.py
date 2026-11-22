@@ -738,3 +738,15 @@ def test_sending_an_empty_prompt_restarts_the_history_from_the_newest_entry(tmp_
             assert _prompt_text(app) == "deux"
 
     _run(scenario)
+
+
+def test_a_new_progress_message_is_drawn_immediately(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test():
+            app.start_progress()
+            app.set_progress_message("lecture de a.txt")
+
+            assert "lecture de a.txt" in _text_of(app, "#progress")
+
+    _run(scenario)
