@@ -303,3 +303,21 @@ def test_a_multiline_response_is_aligned_under_the_prefix_even_without_a_rendere
     presenter.show_response("un\ndeux")
 
     assert "iacli> un\n       deux" in "".join(lines)
+
+
+def test_a_refused_action_is_said_in_the_log():
+    presenter, lines, _ = _asking(False)
+
+    presenter.confirm_file_write("a.txt", "+x")
+    presenter.confirm_shell_command("ls", Path("projet"))
+
+    assert "modification de a.txt refusée." in lines
+    assert "commande ls refusée." in lines
+
+
+def test_an_accepted_action_adds_no_refusal_line():
+    presenter, lines, _ = _asking(True)
+
+    presenter.confirm_file_write("a.txt", "+x")
+
+    assert not any("refusée" in line for line in lines)
