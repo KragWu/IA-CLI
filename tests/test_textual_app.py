@@ -574,3 +574,27 @@ def test_the_confirmation_accepts_capital_letters_too(tmp_path):
     asyncio.run(_answer_write(tmp_path, "O"))
 
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "salut"
+
+
+def test_an_error_raised_by_a_ui_callback_is_not_mistaken_for_a_closed_app(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test():
+            raised = []
+
+            def boom():
+                raise RuntimeError("erreur du callback")
+
+            def work():
+                try:
+                    app._call_ui(boom)
+                except RuntimeError as error:
+                    raised.append(str(error))
+
+            thread = threading.Thread(target=work)
+            thread.start()
+            await asyncio.to_thread(thread.join, 5)
+
+            assert raised == ["erreur du callback"]
+
+    _run(scenario)

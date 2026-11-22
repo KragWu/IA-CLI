@@ -382,6 +382,10 @@ class ChatApp(App[None]):
         try:
             self.call_from_thread(function, *args)
         except RuntimeError:
+            # `call_from_thread` relève aussi les erreurs du callback : seule la fermeture de
+            # l'application entre le test et l'appel est une absence de réponse normale.
+            if self.is_running:
+                raise
             return False
         return True
 
