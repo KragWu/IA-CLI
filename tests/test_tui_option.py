@@ -178,3 +178,17 @@ def test_parse_arguments_keeps_accepting_the_tui_option_for_the_chat():
     assert cli.parse_arguments(["--tui"]).tui is True
     assert cli.parse_arguments(["chat", "--tui"]).tui is True
     assert cli.parse_arguments(["init"]).command == "init"
+
+
+def test_the_tui_checks_the_terminal_before_reading_the_configuration(
+    chat_environment, monkeypatch
+):
+    class Untouched:
+        def ensure_configuration(self, directory):
+            pytest.fail("la configuration ne doit pas être lue avant le refus")
+
+    monkeypatch.setattr("iacli.cli.FileConfigurationGateway", Untouched)
+    monkeypatch.setattr(sys, "stdin", io.StringIO())
+
+    with pytest.raises(RuntimeError, match="--tui"):
+        handle_chat(Namespace(config_dir=chat_environment, tui=True))

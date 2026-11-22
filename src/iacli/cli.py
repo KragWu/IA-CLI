@@ -61,6 +61,10 @@ def handle_chat(args: argparse.Namespace) -> None:
     """
     from langchain_ollama import ChatOllama
 
+    use_tui = getattr(args, "tui", False)
+    if use_tui and not (sys.stdin.isatty() and sys.stdout.isatty()):
+        # Avant toute lecture de la configuration ou tout appel à Ollama.
+        raise RuntimeError("--tui exige un terminal interactif (ni tube ni fichier).")
     configuration = FileConfigurationGateway().ensure_configuration(args.config_dir)
     if configuration.warnings:
         raise ValueError(
@@ -116,7 +120,7 @@ def handle_chat(args: argparse.Namespace) -> None:
     history_path = (
         configuration.directory / "history" if configuration.chat.save_history else None
     )
-    if getattr(args, "tui", False):
+    if use_tui:
         run_tui(
             create_tui_app(
                 model,
@@ -150,9 +154,7 @@ def create_tui_app(
     context_limit: int | None,
     history_path: Path | None = None,
 ) -> "ChatApp":
-    """Application Textual (option `--tui`) : refuse de démarrer hors terminal interactif."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        raise RuntimeError("--tui exige un terminal interactif (ni tube ni fichier).")
+    """Application Textual (option `--tui`), câblée avec la session de chat."""
     from iacli.adapters.textual_chat import ChatApp
 
     def create_session(presenter: ChatPresenter) -> ChatSession:
