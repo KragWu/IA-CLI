@@ -187,7 +187,7 @@ class TextualPresenter:
             return diff  # rendu impossible : le diff brut vaut mieux que rien
 
     def _confirm(self, question: str, refused: str) -> bool:
-        """Pose la question ; sans moyen de la poser, l'action est refusée (et on le dit)."""
+        """Pose la question ; un refus, ou l'impossibilité de la poser, est dit dans le journal."""
         if self._ask is None:
             self._emit(
                 f"erreur> confirmation indisponible dans cette interface : {refused}"
@@ -196,10 +196,13 @@ class TextualPresenter:
         if self._screen is not None:
             self._screen.pause_progress()
         try:
-            return self._ask(question)
+            accepted = self._ask(question)
         finally:
             if self._screen is not None:
                 self._screen.resume_progress()
+        if not accepted:
+            self._emit(refused)
+        return accepted
 
 
 class PromptArea(TextArea):
