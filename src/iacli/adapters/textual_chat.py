@@ -26,7 +26,12 @@ from iacli.domain.commands import (
     resolve_enter,
 )
 from iacli.domain.history import InputHistory
-from iacli.domain.status import context_level, format_duration, format_tokens
+from iacli.domain.status import (
+    context_level,
+    context_percent,
+    format_duration,
+    format_tokens,
+)
 from iacli.domain.text import neutralize_control_characters as safe
 from iacli.services.chat import ChatSession
 from iacli.services.ports import HistoryStore
@@ -127,7 +132,7 @@ class TextualPresenter:
             self._screen.set_context((used, limit))
         self._emit(
             f"contexte> {format_tokens(used)} / {format_tokens(limit)} "
-            f"tokens ({round(100 * used / limit)} %)"
+            f"tokens ({context_percent(used, limit)} %)"
         )
 
     def clear_context_usage(self) -> None:
@@ -137,7 +142,7 @@ class TextualPresenter:
 
     def show_context_warning(self, used: int, limit: int) -> None:
         self._emit(
-            f"attention> contexte utilisé à {round(100 * used / limit)} % : au-delà de "
+            f"attention> contexte utilisé à {context_percent(used, limit)} % : au-delà de "
             f"{format_tokens(limit)} tokens, Ollama peut tronquer les plus "
             "anciens messages de la conversation."
         )
@@ -449,7 +454,7 @@ class ChatApp(App[None]):
             status.append("· contexte ")
             status.append(
                 f"{format_tokens(used)} / {format_tokens(limit)} tokens "
-                f"({round(100 * used / limit)} %)",
+                f"({context_percent(used, limit)} %)",
                 style=self.context_style,
             )
         self.query_one("#status", Label).update(status)

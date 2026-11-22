@@ -9,7 +9,12 @@ from time import perf_counter
 from typing import TextIO
 
 from iacli.domain.commands import SlashCommand
-from iacli.domain.status import PromptStatus, format_duration, format_tokens
+from iacli.domain.status import (
+    PromptStatus,
+    context_percent,
+    format_duration,
+    format_tokens,
+)
 from iacli.domain.text import neutralize_control_characters as safe
 
 # Préfixe des réponses de l'agent ; le rendu markdown en tient compte pour sa largeur.
@@ -123,7 +128,7 @@ class CliChatPresenter:
         self._context = (used, limit)
         self._emit(
             f"contexte> {format_tokens(used)} / {format_tokens(limit)} "
-            f"tokens ({round(100 * used / limit)} %)"
+            f"tokens ({context_percent(used, limit)} %)"
         )
 
     def clear_context_usage(self) -> None:
@@ -131,7 +136,7 @@ class CliChatPresenter:
 
     def show_context_warning(self, used: int, limit: int) -> None:
         self._emit(
-            f"attention> contexte utilisé à {round(100 * used / limit)} % : au-delà de "
+            f"attention> contexte utilisé à {context_percent(used, limit)} % : au-delà de "
             f"{format_tokens(limit)} tokens, Ollama peut tronquer les plus "
             "anciens messages de la conversation."
         )

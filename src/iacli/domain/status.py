@@ -17,9 +17,14 @@ WARN_RATIO = 0.6
 DANGER_RATIO = 0.8
 
 
+def context_percent(used: int, limit: int) -> int:
+    """Occupation du contexte en pourcentage entier (0 si la limite est nulle)."""
+    return round(100 * used / limit) if limit > 0 else 0
+
+
 def context_level(used: int, limit: int) -> str:
     """Niveau d'occupation du contexte : `ok`, `warn` (dès 60 %) ou `danger` (dès 80 %)."""
-    ratio = used / limit
+    ratio = used / limit if limit > 0 else 0
     if ratio >= DANGER_RATIO:
         return "danger"
     return "warn" if ratio >= WARN_RATIO else "ok"
