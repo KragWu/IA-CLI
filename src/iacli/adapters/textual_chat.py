@@ -552,6 +552,14 @@ class ChatApp(App[None]):
         elif key in {"n", "enter", "escape"}:
             self._answer(False)
 
+    def on_unmount(self) -> None:
+        """Quelle que soit la façon de quitter (Ctrl+Q compris), une confirmation en attente
+        est refusée : le thread du tour n'attend plus une réponse qui ne viendra pas. Sans
+        toucher à l'interface, déjà en cours de démontage."""
+        finish, self._pending_answer = self._pending_answer, None
+        if finish is not None:
+            finish(False)
+
     def _refuse_confirmation(self) -> None:
         if self._pending_answer is not None:
             self._answer(False)
