@@ -492,6 +492,7 @@ class ChatApp(App[None]):
 
     def _apply_progress_message(self, message: str) -> None:
         self._progress_message = message
+        self._draw_progress()
 
     def _apply_pause(self, paused: bool) -> None:
         self._progress_paused = paused
