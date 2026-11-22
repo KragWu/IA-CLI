@@ -17,3 +17,25 @@ def test_the_file_history_store_satisfies_the_history_port(tmp_path):
     store: HistoryStore = FileHistoryStore(tmp_path / "history")
 
     assert store.load() == []
+
+
+def test_the_chat_session_satisfies_the_chat_turns_port(tmp_path):
+    from iacli.infrastructure.workspace_tools import create_workspace_tools
+    from iacli.services.chat import ChatSession
+    from iacli.services.ports import ChatTurns
+    from tests.fakes import FakeChatModel
+
+    class Presenter:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    session: ChatTurns = ChatSession(
+        FakeChatModel(),
+        tmp_path,
+        "",
+        "fake-model",
+        presenter=Presenter(),
+        tools_factory=create_workspace_tools,
+    )
+
+    assert session.cancel() is False

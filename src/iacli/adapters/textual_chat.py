@@ -33,8 +33,7 @@ from iacli.domain.status import (
     format_tokens,
 )
 from iacli.domain.text import neutralize_control_characters as safe
-from iacli.services.chat import ChatSession
-from iacli.services.ports import HistoryStore
+from iacli.services.ports import ChatTurns, HistoryStore
 
 RESPONSE_PREFIX = "iacli> "
 
@@ -301,7 +300,7 @@ class ChatApp(App[None]):
 
     def __init__(
         self,
-        create_session: Callable[[TextualPresenter], ChatSession],
+        create_session: Callable[[TextualPresenter], ChatTurns],
         render_markdown: Callable[[str], str] | None = None,
         render_diff: Callable[[str], str] | None = None,
         history: HistoryStore | None = None,
