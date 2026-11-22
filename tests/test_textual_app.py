@@ -720,3 +720,21 @@ def test_closing_the_app_cancels_the_turn_that_is_still_running(tmp_path):
         _run(scenario)
     finally:
         release.set()
+
+
+def test_sending_an_empty_prompt_restarts_the_history_from_the_newest_entry(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            await _send(app, pilot, "un")
+            await _send(app, pilot, "deux")
+            await pilot.press("up", "up")
+            assert _prompt_text(app) == "un"
+
+            app.query_one("#prompt").clear()
+            await pilot.press("enter")
+            await pilot.press("up")
+
+            assert _prompt_text(app) == "deux"
+
+    _run(scenario)

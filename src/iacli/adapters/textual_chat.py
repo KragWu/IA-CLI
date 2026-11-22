@@ -365,9 +365,13 @@ class ChatApp(App[None]):
         text = event.text
         prompt = self.query_one("#prompt", PromptArea)
         prompt.clear()
-        if self._busy or not text.strip():
+        if self._busy:
             return
-        if prompt.input_history.add(text) and self._history_store is not None:
+        # Même un message vide repart de l'entrée la plus récente (`add` réinitialise la position).
+        stored = prompt.input_history.add(text)
+        if not text.strip():
+            return
+        if stored and self._history_store is not None:
             self._history_store.append(text)
         self._busy = True
         self._turn_id += 1
