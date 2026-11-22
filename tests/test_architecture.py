@@ -210,3 +210,14 @@ def test_adapters_do_not_depend_on_each_other():
     ]
 
     assert offenders == []
+
+
+def test_adapters_only_know_the_services_through_their_ports():
+    offenders = [
+        f"{module} importe {name}"
+        for module, name in imports_of("adapters")
+        if is_inside(name, "iacli.services")
+        and not is_inside(name, "iacli.services.ports")
+    ]
+
+    assert offenders == []

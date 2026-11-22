@@ -138,6 +138,17 @@ class ChatPresenter(Protocol):
         ...
 
 
+class ChatTurns(Protocol):
+    """Ce qu'une interface pilotée par événements attend d'une session de chat : démarrer,
+    traiter une saisie et annuler le tour en cours (depuis n'importe quel thread)."""
+
+    def start(self) -> None: ...
+
+    def handle(self, user_input: str) -> bool: ...
+
+    def cancel(self) -> bool: ...
+
+
 class HistoryStore(Protocol):
     """Historique persistant des messages saisis (ne lève jamais d'erreur d'accès)."""
 
