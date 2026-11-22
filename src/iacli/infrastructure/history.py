@@ -31,5 +31,9 @@ class FileHistoryStore:
             descriptor = os.open(
                 self._path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600
             )
+            # Un fichier déjà créé avec des droits larges (par la console, par exemple) est
+            # resserré : il reçoit lui aussi des messages en clair.
+            with contextlib.suppress(OSError):
+                self._path.chmod(0o600)
             with os.fdopen(descriptor, "a", encoding="utf-8", newline="\n") as file:
                 file.write(format_entry(text, datetime.now().isoformat(sep=" ")))

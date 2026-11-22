@@ -1,3 +1,6 @@
+import os
+
+import pytest
 from prompt_toolkit.history import FileHistory
 
 from iacli.domain.history import InputHistory, format_entry, parse_entries
@@ -88,3 +91,14 @@ def test_exotic_line_separators_stay_inside_a_reloaded_entry():
     content = "".join(format_entry(entry, "2026-01-01 10:00:00") for entry in entries)
 
     assert parse_entries(content) == entries
+
+
+@pytest.mark.skipif(os.name == "nt", reason="droits POSIX")
+def test_an_existing_permissive_history_file_is_made_private_on_append(tmp_path):
+    path = tmp_path / "history"
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o644)
+
+    FileHistoryStore(path).append("secret")
+
+    assert path.stat().st_mode & 0o777 == 0o600
