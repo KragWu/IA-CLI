@@ -221,7 +221,7 @@ class PromptArea(TextArea):
 
     def _show_hint(self, text: str) -> None:
         hint = self.app.query_one("#hint", Label)
-        hint.update(text)
+        hint.update(Text(text))
         hint.display = bool(text)
 
     def _replace(self, text: str) -> None:
@@ -491,9 +491,13 @@ class ChatApp(App[None]):
         if label.display:
             frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
             elapsed = format_duration(perf_counter() - self._progress_started)
+            # `Text` : le message peut contenir des crochets (nom d'outil du modèle) qu'un `str`
+            # ferait lire comme du balisage.
             label.update(
-                f"{frames[self._progress_frame % len(frames)]} "
-                f"{self._progress_message} ({elapsed})..."
+                Text(
+                    f"{frames[self._progress_frame % len(frames)]} "
+                    f"{self._progress_message} ({elapsed})..."
+                )
             )
 
     def _advance_spinner(self) -> None:
@@ -518,7 +522,7 @@ class ChatApp(App[None]):
     def _open_question(self, question: str, finish: Callable[[bool], None]) -> None:
         """Affiche la question au-dessus de la saisie, qui est désactivée pendant le tour."""
         label = self.query_one("#question", Label)
-        label.update(safe(question))
+        label.update(Text(safe(question)))
         label.display = True
         self._pending_answer = finish
 

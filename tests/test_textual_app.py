@@ -598,3 +598,21 @@ def test_an_error_raised_by_a_ui_callback_is_not_mistaken_for_a_closed_app(tmp_p
             assert raised == ["erreur du callback"]
 
     _run(scenario)
+
+
+def test_square_brackets_in_the_texts_are_displayed_literally_not_as_markup(tmp_path):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test() as pilot:
+            app.start_progress()
+            app.set_progress_message("Appel des outils : [/x] [bold]y")
+            await pilot.pause(0.4)
+
+            assert app.is_running
+            assert "[/x] [bold]y" in _text_of(app, "#progress")
+
+            app._open_question("Appliquer [/x] ? [o/N]", lambda accepted: None)
+            await pilot.pause()
+            assert "[/x]" in _text_of(app, "#question")
+
+    _run(scenario)
