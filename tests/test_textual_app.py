@@ -660,3 +660,23 @@ def test_a_question_opened_after_a_cancellation_is_refused_immediately(tmp_path)
             assert not app.query_one("#question").display
 
     _run(scenario)
+
+
+def test_closing_the_app_by_another_route_refuses_the_pending_confirmation(tmp_path):
+    async def scenario():
+        model = FakeChatModel([WRITE_CALL, AIMessage(content="fini")])
+        app = _app(tmp_path, model)
+        async with app.run_test() as pilot:
+            await pilot.click("#prompt")
+            await pilot.press(*"ecris", "enter")
+            await _wait_for_confirmation(app, pilot)
+
+            app.exit()  # sortie qui ne passe ni par Ctrl+C ni par Ctrl+D (ex. Ctrl+Q)
+            await pilot.pause()
+
+        thread = app._turn_thread
+        await asyncio.to_thread(thread.join, 5)
+        assert not thread.is_alive()
+        assert not (tmp_path / "a.txt").exists()
+
+    _run(scenario)
