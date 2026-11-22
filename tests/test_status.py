@@ -81,3 +81,18 @@ def test_the_context_percent_is_rounded_and_tolerates_a_zero_limit(
 
 def test_the_context_level_tolerates_a_zero_limit():
     assert context_level(5, 0) == "ok"
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0.9996, "1.00 s"),
+        (59.996, "1 min 00 s"),
+        (3599.7, "1 h 00 min 00 s"),
+        (0.9994, "999 ms"),
+        (59.99, "59.99 s"),
+        (3599.4, "59 min 59 s"),
+    ],
+)
+def test_a_duration_never_shows_a_rounded_value_out_of_its_range(seconds, expected):
+    assert format_duration(seconds) == expected

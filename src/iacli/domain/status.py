@@ -37,15 +37,16 @@ def format_tokens(count: int) -> str:
 
 def format_duration(seconds: float) -> str:
     """Durée lisible : `850 ms`, `1.25 s`, `2 min 05 s` ou `1 h 02 min 03 s`."""
-    if seconds < 1:
+    # Les seuils suivent la valeur arrondie : 59,996 s s'affiche `1 min 00 s`, pas `60.00 s`.
+    if seconds < 0.9995:
         milliseconds = seconds * 1000
         if milliseconds < 10:
             return f"{milliseconds:.1f} ms"
         return f"{milliseconds:.0f} ms"
-    if seconds < 60:
+    if seconds < 59.995:
         return f"{seconds:.2f} s"
     whole_seconds = round(seconds)
-    if seconds < 3600:
+    if whole_seconds < 3600:
         minutes, remaining_seconds = divmod(whole_seconds, 60)
         return f"{minutes} min {remaining_seconds:02d} s"
     hours, remainder = divmod(whole_seconds, 3600)
