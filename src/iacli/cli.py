@@ -259,13 +259,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """Analyse la ligne de commande ; `--tui` n'a de sens que pour la conversation."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "init" and args.tui:
+        parser.error("--tui ne s'applique qu'à la conversation (iacli ou iacli chat).")
+    return args
+
+
 def main() -> int:
     """Exécute la CLI et retourne le code de sortie : 0 succès, 1 erreur, 130 interruption (Ctrl+C).
 
     Sans sous-commande, la conversation (`chat`) est lancée.
     """
-    parser = build_parser()
-    args = parser.parse_args()
+    args = parse_arguments()
 
     try:
         args.func(args)

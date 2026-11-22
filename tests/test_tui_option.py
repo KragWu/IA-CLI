@@ -164,3 +164,17 @@ def test_the_tui_keeps_the_history_in_memory_by_default(chat_environment, monkey
     app = _started_app(chat_environment, monkeypatch)
 
     assert app._history_store is None
+
+
+def test_the_tui_option_is_refused_with_the_init_command(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        cli.parse_arguments(["--tui", "init"])
+
+    assert exit_info.value.code == 2
+    assert "--tui" in capsys.readouterr().err
+
+
+def test_parse_arguments_keeps_accepting_the_tui_option_for_the_chat():
+    assert cli.parse_arguments(["--tui"]).tui is True
+    assert cli.parse_arguments(["chat", "--tui"]).tui is True
+    assert cli.parse_arguments(["init"]).command == "init"
