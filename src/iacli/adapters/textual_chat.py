@@ -245,10 +245,12 @@ class PromptArea(TextArea):
         elif key == "tab":
             self._handled(event)
             self._complete()
-        elif key == "up" and self.cursor_location[0] == 0:
+        elif key == "up" and self.navigator.is_first_wrapped_line(self.cursor_location):
             self._handled(event)
             self._browse(self.input_history.previous(self.text))
-        elif key == "down" and self.cursor_location[0] == self.document.line_count - 1:
+        elif key == "down" and self.navigator.is_last_wrapped_line(
+            self.cursor_location
+        ):
             self._handled(event)
             self._browse(self.input_history.next())
 

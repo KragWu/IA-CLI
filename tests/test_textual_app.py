@@ -616,3 +616,29 @@ def test_square_brackets_in_the_texts_are_displayed_literally_not_as_markup(tmp_
             assert "[/x]" in _text_of(app, "#question")
 
     _run(scenario)
+
+
+def test_the_arrows_move_inside_a_wrapped_message_before_browsing_the_history(
+    tmp_path,
+):
+    async def scenario():
+        app = _app(tmp_path)
+        async with app.run_test(size=(30, 24)) as pilot:
+            await _send(app, pilot, "ancien")
+            prompt = app.query_one("#prompt")
+            long_message = " ".join(["mot"] * 20)  # une seule ligne, plusieurs rangées
+            prompt.text = long_message
+            prompt.move_cursor(prompt.document.end)
+            await pilot.pause()
+
+            await pilot.press("up")
+            assert _prompt_text(app) == long_message
+
+            for _ in range(10):
+                await pilot.press("up")
+            assert _prompt_text(app) == "ancien"
+
+            await pilot.press("down")
+            assert _prompt_text(app) == long_message
+
+    _run(scenario)
