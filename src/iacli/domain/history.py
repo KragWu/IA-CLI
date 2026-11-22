@@ -14,7 +14,6 @@ class InputHistory:
 
     def add(self, text: str) -> bool:
         """Mémorise un message (jamais vide ni identique au précédent) et repart de la fin."""
-        self._position = len(self._entries) + 1
         stored = bool(text.strip()) and (not self._entries or self._entries[-1] != text)
         if stored:
             self._entries.append(text)
